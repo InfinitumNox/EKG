@@ -38,15 +38,11 @@ Die Stromschienen werden **nicht** verwendet. Dein Breadboard hat in der Mitte g
 
 ### Bauteile
 
-| Bauteil | Wert | Löcher | Zweck |
-|---|---|---|---|
-| C1 | 100 nF Keramik | h30 – h31 | Abblockkondensator am AD8232 |
-| C2 | 10 µF (Elko: + an j30) | j30 – j31 | Abblockkondensator am AD8232 |
+Keine. Es werden nur die sechs Drähte gesteckt. Das AD8232-Modul und das Pico-Board haben ihre
+Abblockkondensatoren bereits auf der Platine.
 
-Der AD8232-Ausgang geht direkt an den ADC, ohne RC-Glied. Das reicht: Das Board filtert selbst bei
-~40 Hz, und die Mittelung über 64 ADC-Werte unterdrückt hochfrequente Einstreuung zusätzlich.
-Keinen Kondensator direkt zwischen OUTPUT/GP26 und GND hängen: Ohne Vorwiderstand kann das den
-Ausgangsverstärker des AD8232 zum Schwingen bringen.
+Nicht nachrüsten: einen Kondensator direkt zwischen OUTPUT/GP26 und GND. Ohne Vorwiderstand kann das
+den Ausgangsverstärker des AD8232 zum Schwingen bringen.
 
 ### Prüfen vor dem ersten Einschalten
 

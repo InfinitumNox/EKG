@@ -9,9 +9,10 @@ import numpy as np
 
 from .dsp.beats import Delineation, MedianBeat, delineate, median_beat
 from .dsp.filters import PRESETS, FilterSettings, zero_phase
-from .dsp.hr import instantaneous_hr
-from .dsp.hrv import HrvResult, compute_hrv, rhythm_hints
+from .dsp.hr import instantaneous_hr, smooth_hr
+from .dsp.hrv import HrvResult, compute_hrv, rhythm_hints, segment_hrv
 from .dsp.qrs import Beat, detect_qrs, refine_r_peaks
+from .dsp.respiration import breathing_from_amplitude, qrs_amplitudes
 from .protocol import Flag
 from .storage.recording import Recording
 
@@ -24,7 +25,10 @@ class Analysis:
     beats: list[Beat]
     hr_t: np.ndarray
     hr_bpm: np.ndarray
+    hr_smooth: np.ndarray
     hrv: HrvResult | None
+    segments: list[HrvResult]
+    breathing_hz: float | None
     median: MedianBeat | None
     delineation: Delineation | None
     hints: list[str] = field(default_factory=list)
@@ -65,7 +69,9 @@ def analyse(
     step("Herzfrequenz und HRV", 0.7)
     hr_t, hr_bpm = instantaneous_hr(r, fs)
     hrv = compute_hrv(r / fs)
+    segments = segment_hrv(r / fs)
     hints = rhythm_hints(r / fs)
+    breathing = breathing_from_amplitude(r / fs, qrs_amplitudes(filtered, r, fs))
 
     step("Median-Schlag vermessen", 0.85)
     mb = median_beat(filtered, r, fs)
@@ -78,7 +84,10 @@ def analyse(
         beats=beats,
         hr_t=hr_t,
         hr_bpm=hr_bpm,
+        hr_smooth=smooth_hr(hr_t, hr_bpm),
         hrv=hrv,
+        segments=segments,
+        breathing_hz=breathing,
         median=mb,
         delineation=dl,
         hints=hints,

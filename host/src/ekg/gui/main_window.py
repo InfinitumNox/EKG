@@ -179,7 +179,7 @@ class MainWindow(QMainWindow):
             grp.addAction(act)
         d.addSeparator()
         self.act_calibrate = d.addAction(
-            "Verstärkung/Frequenzgang kalibrieren …", self.calibrate_gain
+            "Verstärkung kalibrieren (optional, braucht Zusatzschaltung) …", self.calibrate_gain
         )
         self.act_bootsel = d.addAction("Bootloader starten (Firmware flashen)", self._bootsel)
 
@@ -453,15 +453,8 @@ class MainWindow(QMainWindow):
             b.show_banner("sim", "Testsignal der Firmware – kein Mensch angeschlossen", "info")
         else:
             b.hide_banner("sim")
-        if connected and not self.is_simulator and not pl.conversion.gain_calibrated and pl.info:
-            b.show_banner(
-                "gain",
-                "Verstärkung nicht kalibriert (nominal 1100) – mV-Werte sind Näherungen. "
-                "Gerät → Kalibrieren",
-                "warning",
-            )
-        else:
-            b.hide_banner("gain")
+        # Ohne Kalibrierung sind nur die mV-Werte Näherungen; Zeiten, HF und HRV sind exakt.
+        # Deshalb kein Warnbanner, nur der Hinweis „nominal“ im Gerätefeld.
         if connected and pl.cal_active:
             b.show_banner("cal", "Kalibriersignal aktiv – kein Mensch am Gerät!", "warning")
         else:

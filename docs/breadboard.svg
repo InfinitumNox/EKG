@@ -476,15 +476,6 @@
 <text x="442.0" y="752.0" text-anchor="end" class="pin">3.3V</text>
 <rect x="448.0" y="764.0" width="12" height="12" fill="#ffd54f" stroke="#7a5c00"/>
 <text x="442.0" y="774.0" text-anchor="end" class="pin">GND</text>
-<line x1="498.0" y1="748.0" x2="498.0" y2="770.0" stroke="#777" stroke-width="2"/>
-<ellipse cx="498.0" cy="759.0" rx="8" ry="10" fill="#f9a825" stroke="#8a5a00"/>
-<circle cx="498.0" cy="748.0" r="3.5" fill="#555"/>
-<circle cx="498.0" cy="770.0" r="3.5" fill="#555"/>
-<line x1="542.0" y1="748.0" x2="542.0" y2="770.0" stroke="#777" stroke-width="2"/>
-<circle cx="542.0" cy="759.0" r="11" fill="#1a237e" stroke="#000"/>
-<text x="542.0" y="757.0" text-anchor="middle" class="pin">+</text>
-<circle cx="542.0" cy="748.0" r="3.5" fill="#555"/>
-<circle cx="542.0" cy="770.0" r="3.5" fill="#555"/>
 <path d="M476.0,660.0 C580.0,660.0 580.0,352.0 520.0,352.0" fill="none" stroke="#1e88e5" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
 <circle cx="476.0" cy="660.0" r="4.5" fill="#1e88e5" stroke="#000" stroke-width="0.8"/>
 <circle cx="520.0" cy="352.0" r="4.5" fill="#1e88e5" stroke="#000" stroke-width="0.8"/>
@@ -516,9 +507,6 @@
 <text x="1056.0" y="238.0" class="lbl">g31 → i8  GND → AGND</text>
 <line x1="1022.0" y1="252.0" x2="1048.0" y2="252.0" stroke="#fbc02d" stroke-width="4"/>
 <text x="1056.0" y="256.0" class="lbl">g29 → i10  OUTPUT → GP26/ADC0</text>
-<text x="1022.0" y="284.0" style="font-size:13px;font-weight:bold">Bauteile</text>
-<text x="1022.0" y="302.0" class="lbl">C1 100 nF: h30 – h31</text>
-<text x="1022.0" y="320.0" class="lbl">C2 10 µF (+ oben): j30 – j31</text>
-<text x="1022.0" y="348.0" class="small">Keinen Kondensator direkt an OUTPUT/GP26 hängen.</text>
-<text x="1022.0" y="364.0" class="small">Stromschienen werden nicht benutzt.</text>
+<text x="1022.0" y="312.0" class="small">Nur Drähte – keine Widerstände, keine Kondensatoren.</text>
+<text x="1022.0" y="328.0" class="small">Stromschienen werden nicht benutzt.</text>
 </svg>

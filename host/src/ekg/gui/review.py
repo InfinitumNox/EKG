@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from ..analysis import Analysis, analyse
 from ..config import Settings, recordings_dir
 from ..dsp.filters import PRESETS
-from ..dsp.hrv import hrv_rows
+from ..dsp.hrv import hrv_rows, segment_rows
 from ..storage import export
 from ..storage.recording import Recording, load_recording
 from .grid_item import EcgGridItem
@@ -140,7 +140,8 @@ class ReviewWidget(QWidget):
         self.overview.setMaximumHeight(140)
         self.overview.setLabel("left", "HF /min")
         self.overview.setLabel("bottom", "Zeit", units="s")
-        self.ov_curve = self.overview.plot([], [], pen=pg.mkPen("#c62828", width=1.5))
+        self.ov_curve = self.overview.plot([], [], pen=pg.mkPen("#ef9a9a", width=1))
+        self.ov_smooth = self.overview.plot([], [], pen=pg.mkPen("#b71c1c", width=2))
         self.region = pg.LinearRegionItem([0, 10])
         self.region.setZValue(10)
         self.overview.addItem(self.region)
@@ -262,6 +263,7 @@ class ReviewWidget(QWidget):
             self.plot.addItem(line)
             self._marker_items.append(line)
         self.ov_curve.setData(an.hr_t, an.hr_bpm)
+        self.ov_smooth.setData(an.hr_t, an.hr_smooth)
         self.overview.setXRange(0, rec.duration_s, padding=0.01)
         self._set_enabled(True)
         self._fill_summary()
@@ -288,7 +290,10 @@ class ReviewWidget(QWidget):
         ]
         if rec.test_signal:
             rows.insert(0, ("Quelle", "<span style='color:#b71c1c'>Testsignal</span>"))
-        self.summary.set_rows(rows + hrv_rows(an.hrv))
+        seg = segment_rows(an.segments)
+        if seg:
+            seg = [("<i>Kurzzeit-HRV</i>", "<i>Median (Spanne) je 5 min</i>")] + seg
+        self.summary.set_rows(rows + hrv_rows(an.hrv, an.breathing_hz) + seg)
         hints = an.hints
         self.hints.setText(
             "<b>Hinweise</b> (keine Diagnose):<br>" + "<br>".join(f"• {h}" for h in hints)

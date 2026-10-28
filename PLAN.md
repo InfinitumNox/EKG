@@ -50,7 +50,7 @@ Die Pin-Nummern beziehen sich auf das **offizielle Pico-2-Layout**. Das Board is
 | LO− | GP21 | 27 | dito |
 | SDN | GP22 | 29 | Wird von der Firmware auf High gelegt; Low schaltet den AD8232 ab (später fürs Akku-Sparen) |
 
-Zusätzlich auf dem Breadboard: **100 nF + 10 µF** zwischen 3V3 und GND, möglichst nah am AD8232.
+Keine weiteren Bauteile: Beide Module haben ihre Abblockkondensatoren auf der Platine.
 
 Später (Phase 2) kommt **GP28 / ADC2** an einen Spannungsteiler für die Akkuspannung.
 
@@ -336,3 +336,20 @@ PLAN.md     dieses Dokument
 | M4 | Werkzeug fertig, Messung offen | Kalibrier-Assistent gegen den simulierten Loopback getestet (Verstärkung ±1 %) |
 | M5 | fertig | EDF+/WFDB/CSV/PDF, Messschieber, HRV, Median-Schlag |
 | M6 | offen | Phase 2 |
+
+## 14. Erkenntnisse aus der ersten realen Messung (28.10.2026, 30 min)
+
+Ausgewertet wurde der PDF-Bericht. Die Kurven liegen darin als Vektordaten vor: 100 s EKG mit 500 Hz und
+die HF aller 1976 Schläge.
+
+| Befund | Ursache | Änderung |
+|---|---|---|
+| Alle 110 Schläge der 100 s erkannt, keine falschen | – | QRS-Erkennung unverändert |
+| „258 vorzeitige Schläge“, 12 % der RR verworfen | Die 20-%-Regel hielt starke, glatte HF-Schwankungen für Extraschläge und führte den Vergleichswert nicht nach | Klassifikation nach Lipponen & Tarvainen (2019) plus Regel für die kompensatorische Pause; jetzt 0,6 % verworfen |
+| RMSSD 74 ms | durch die falsch verworfenen Schläge unterschätzt | 92 ms (5-min-Abschnitte 78–108 ms) |
+| LF/HF 1,71 ohne Einordnung | Hauptschwankung bei 0,11 Hz, Atmung vermutlich bei ~0,18 Hz | Atemschätzung aus der R-Amplitude; LF/HF wird als nicht deutbar markiert, wenn die Atmung im LF-Band liegt |
+| PR 250 ms (Fenstergrenze) | PR-Strecke ~0,03 mV tiefer als die TP-Strecke, fester Bezugspegel | P-Beginn über die Steigung, Plausibilitätsgrenzen; jetzt 160 ms |
+| HF-Verlauf schwer lesbar | Schlag-für-Schlag-Werte schwanken mit der Atmung | zusätzlich gleitender Median über 30 s |
+
+Als Regressionstest ist ein Simulator-Szenario „Ruhe“ mit diesen Eigenschaften hinzugekommen
+(`host/tests/test_realistic.py`). Die echten Daten liegen nicht im Repository.

@@ -44,10 +44,7 @@ WIRES = [
     (("g", 29), ("i", 10), "#fbc02d", "OUTPUT → GP26/ADC0"),
 ]
 # (Bauteil, von, nach, Beschriftung)
-PARTS = [
-    ("C", ("h", 30), ("h", 31), "C1 100 nF"),
-    ("E", ("j", 30), ("j", 31), "C2 10 µF (+ oben)"),
-]
+PARTS = []
 
 
 def svg() -> str:
@@ -208,14 +205,17 @@ def svg() -> str:
             f'<text x="{lx + 34}" y="{y + 4}" class="lbl">{a[0]}{a[1]} → {b[0]}{b[1]}  {label}</text>'
         )
     y = ly + 8 + len(WIRES) * 18 + 14
-    out.append(f'<text x="{lx}" y="{y}" style="font-size:13px;font-weight:bold">Bauteile</text>')
+    if PARTS:
+        out.append(
+            f'<text x="{lx}" y="{y}" style="font-size:13px;font-weight:bold">Bauteile</text>'
+        )
     for i, (_k, a, b, label) in enumerate(PARTS):
         out.append(
             f'<text x="{lx}" y="{y + 18 + i * 18}" class="lbl">{label}: {a[0]}{a[1]} – {b[0]}{b[1]}</text>'
         )
     y += 18 + len(PARTS) * 18 + 10
     out.append(
-        f'<text x="{lx}" y="{y}" class="small">Keinen Kondensator direkt an OUTPUT/GP26 hängen.</text>'
+        f'<text x="{lx}" y="{y}" class="small">Nur Drähte – keine Widerstände, keine Kondensatoren.</text>'
     )
     out.append(
         f'<text x="{lx}" y="{y + 16}" class="small">Stromschienen werden nicht benutzt.</text>'

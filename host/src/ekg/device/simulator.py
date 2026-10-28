@@ -19,15 +19,27 @@ from .. import protocol as P
 from ..units import Conversion
 
 # (Versatz zur R-Zacke s, Amplitude mV, Breite s, wandert mit RR)
-_NORMAL_WAVES = (
+Wave = tuple[float, float, float, bool]
+_NORMAL_WAVES: tuple[Wave, ...] = (
     (-0.200, 0.15, 0.025, False),
     (-0.035, -0.10, 0.010, False),
     (0.000, 1.20, 0.010, False),
     (0.035, -0.25, 0.012, False),
     (0.300, 0.30, 0.060, True),
 )
-_AF_WAVES = tuple(w for w in _NORMAL_WAVES if w[0] != -0.200)  # keine P-Welle
-_PVC_WAVES = (
+_AF_WAVES: tuple[Wave, ...] = tuple(w for w in _NORMAL_WAVES if w[0] != -0.200)  # keine P-Welle
+# Nachgebildet einer realen Ruhemessung (Brustwand, angenähert Ableitung II): kleine P-
+# und T-Welle, R ~0,75 mV und eine flache negative Ta-Welle (Vorhof-Repolarisation), die
+# die PR-Strecke etwas unter die TP-Strecke drückt.
+_REST_WAVES: tuple[Wave, ...] = (
+    (-0.200, 0.10, 0.022, False),  # P
+    (-0.110, -0.03, 0.035, False),  # Ta
+    (-0.030, -0.06, 0.008, False),  # Q
+    (0.000, 0.75, 0.009, False),  # R
+    (0.030, -0.12, 0.010, False),  # S
+    (0.300, 0.13, 0.055, True),  # T
+)
+_PVC_WAVES: tuple[Wave, ...] = (
     (-0.020, -0.25, 0.025, False),
     (0.030, 1.50, 0.030, False),
     (0.090, -0.35, 0.030, False),
@@ -37,6 +49,7 @@ _PVC_WAVES = (
 
 class Scenario(StrEnum):
     NORMAL = "normal"
+    REST = "rest"
     PVC = "pvc"
     AF = "af"
     BRADY = "brady"
@@ -47,6 +60,7 @@ class Scenario(StrEnum):
 
 SCENARIO_LABELS = {
     Scenario.NORMAL: "Sinusrhythmus",
+    Scenario.REST: "Ruhe, starke HF-Schwankung (wie reale Messung)",
     Scenario.PVC: "Ventrikuläre Extrasystolen",
     Scenario.AF: "Vorhofflimmern (irregulär)",
     Scenario.BRADY: "Bradykardie (45/min)",
@@ -60,7 +74,7 @@ SCENARIO_LABELS = {
 class _ScheduledBeat:
     r: float
     rr_before: float
-    waves: tuple[tuple[float, float, float, bool], ...]
+    waves: tuple[Wave, ...]
 
 
 @dataclass
@@ -72,14 +86,24 @@ class SyntheticEcg:
     mains_mv: float = 0.0
     noise_mv: float = 0.008
     amplitude: float = 1.0
+    resp_hz: float = 0.25  # Atemfrequenz
+    rsa: float = 0.04  # relative RR-Schwankung mit der Atmung
+    mayer: float = 0.0  # relative RR-Schwankung bei ~0,1 Hz (Blutdruckregulation)
+    amp_mod: float = 0.0  # relative QRS-Amplitudenschwankung mit der Atmung
+    jitter: float = 0.015
     r_times: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.scenario = Scenario(self.scenario)
+        self._waves = _NORMAL_WAVES
         if self.scenario == Scenario.BRADY:
             self.hr_bpm = 45.0
         elif self.scenario == Scenario.TACHY:
             self.hr_bpm = 130.0
+        elif self.scenario == Scenario.REST:
+            self.hr_bpm, self.resp_hz, self.rsa, self.mayer = 66.0, 0.18, 0.07, 0.13
+            self.amp_mod, self.jitter = 0.08, 0.01
+            self._waves = _REST_WAVES
         self._rng = np.random.default_rng(self.seed)
         self._n = 0
         rr0 = 60.0 / self.hr_bpm
@@ -89,6 +113,7 @@ class SyntheticEcg:
         self._count = 0
         self._artifact_until = -1.0
         self._af_phase = self._rng.uniform(0, 2 * np.pi, 3)
+        self._mayer_phase = self._rng.uniform(0, 2 * np.pi)
 
     @property
     def t(self) -> float:
@@ -98,7 +123,7 @@ class SyntheticEcg:
         rr0 = 60.0 / self.hr_bpm
         while self._next_r < t_end:
             r = self._next_r
-            waves = _AF_WAVES if self.scenario == Scenario.AF else _NORMAL_WAVES
+            waves = _AF_WAVES if self.scenario == Scenario.AF else self._waves
             if self.scenario == Scenario.AF:
                 rr = rr0 * self._rng.uniform(0.6, 1.4)
             elif self.scenario == Scenario.PVC and self._count % 6 == 5:
@@ -107,7 +132,9 @@ class SyntheticEcg:
             elif self.scenario == Scenario.PVC and self._count % 6 == 4:
                 rr = rr0 * 0.6  # die nächste Erregung kommt vorzeitig
             else:
-                rr = rr0 * (1.0 + 0.04 * np.sin(2 * np.pi * 0.25 * r) + 0.015 * self._rng.normal())
+                mod = self.rsa * np.sin(2 * np.pi * self.resp_hz * r)
+                mod += self.mayer * np.sin(2 * np.pi * 0.105 * r + self._mayer_phase)
+                rr = rr0 * (1.0 + mod + self.jitter * self._rng.normal())
             self._beats.append(_ScheduledBeat(r, self._last_rr, waves))
             self.r_times.append(r)
             self._last_rr = rr
@@ -128,8 +155,8 @@ class SyntheticEcg:
                 x = (t - b.r - o) / width
                 m = np.abs(x) < 6
                 v[m] += amp * np.exp(-0.5 * x[m] ** 2)
-        v *= self.amplitude
-        v += 0.03 * np.sin(2 * np.pi * 0.2 * t)
+        v *= self.amplitude * (1.0 + self.amp_mod * np.sin(2 * np.pi * self.resp_hz * t))
+        v += 0.03 * np.sin(2 * np.pi * self.resp_hz * t)
         v += self.noise_mv * self._rng.normal(size=n)
         if self.mains_mv:
             v += self.mains_mv * np.sin(2 * np.pi * 50.0 * t)

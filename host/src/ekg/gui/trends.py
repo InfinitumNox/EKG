@@ -7,8 +7,9 @@ import pyqtgraph as pg
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGridLayout, QLabel, QWidget
 
-from ..dsp.hr import instantaneous_hr
+from ..dsp.hr import instantaneous_hr, smooth_hr
 from ..dsp.hrv import compute_hrv, hrv_rows, rhythm_hints
+from ..dsp.respiration import breathing_from_amplitude
 from ..pipeline import LivePipeline
 from .widgets import InfoPanel
 
@@ -24,7 +25,8 @@ class TrendsWidget(QWidget):
         self.hr_plot.setLabel("left", "/min")
         self.hr_plot.setLabel("bottom", "Zeit", units="min")
         self.hr_plot.showGrid(x=True, y=True, alpha=0.3)
-        self.hr_curve = self.hr_plot.plot([], [], pen=pg.mkPen("#c62828", width=2))
+        self.hr_curve = self.hr_plot.plot([], [], pen=pg.mkPen("#ef9a9a", width=1))
+        self.hr_smooth = self.hr_plot.plot([], [], pen=pg.mkPen("#b71c1c", width=2.5))
         self.rr_plot = pg.PlotWidget(title="RR-Tachogramm")
         self.rr_plot.setLabel("left", "RR", units="ms")
         self.rr_plot.setLabel("bottom", "Schlag")
@@ -69,9 +71,11 @@ class TrendsWidget(QWidget):
         if not self.isVisible() or self.pipeline is None:
             return
         pl = self.pipeline
-        r = np.array([b.index for b in pl.all_beats()])
+        beats = pl.all_beats()
+        r = np.array([b.index for b in beats])
         t, hr = instantaneous_hr(r, pl.fs)
         self.hr_curve.setData(t / 60.0, hr)
+        self.hr_smooth.setData(t / 60.0, smooth_hr(t, hr))
         rr = np.diff(r) / pl.fs * 1000.0 if len(r) > 1 else np.zeros(0)
         last = rr[-300:]
         self.rr_curve.setData(np.arange(len(last)), last)
@@ -83,8 +87,11 @@ class TrendsWidget(QWidget):
             self.poincare_pts.clear()
         if len(r):
             r_s = r / pl.fs
-            recent = r_s[r_s >= r_s[-1] - HRV_WINDOW_S]
-            self.hrv.set_rows(hrv_rows(compute_hrv(recent)))
+            sel = r_s >= r_s[-1] - HRV_WINDOW_S
+            recent = r_s[sel]
+            amps = np.array([b.amplitude_mv for b in beats])[sel]
+            breathing = breathing_from_amplitude(recent, np.abs(amps))
+            self.hrv.set_rows(hrv_rows(compute_hrv(recent), breathing))
             hints = rhythm_hints(recent)
             self.hints.setText(
                 "<b>Hinweise</b> (keine Diagnose):<br>" + "<br>".join(f"• {h}" for h in hints)

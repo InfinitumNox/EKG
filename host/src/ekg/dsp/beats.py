@@ -50,17 +50,22 @@ class Delineation:
 def median_beat(
     x: np.ndarray, r_index: np.ndarray, fs: float, max_beats: int = 300
 ) -> MedianBeat | None:
-    """Median über die Schläge mit typischem RR (Extrasystolen verzerren sonst die T-Welle)."""
+    """Median über normale Schläge (ohne Extraschläge und Erkennungsfehler).
+
+    Welche Schläge normal sind, entscheidet die RR-Klassifikation (ekg.dsp.artifacts);
+    atemabhängig längere oder kürzere Schläge bleiben drin.
+    """
+    from .hrv import nn_mask
+
     r = np.asarray(r_index, dtype=np.float64)
     if len(r) < 5:
         return None
     rr = np.diff(r) / fs
-    med_rr = float(np.median(rr))
+    ok_rr, _ = nn_mask(rr)
     pre, post = round(PRE_S * fs), round(POST_S * fs)
     segs = []
     for k in range(1, len(r) - 1):
-        rr_before, rr_after = rr[k - 1], rr[k]
-        if abs(rr_before - med_rr) > 0.2 * med_rr or abs(rr_after - med_rr) > 0.2 * med_rr:
+        if not (ok_rr[k - 1] and ok_rr[k]):
             continue
         c = round(r[k])
         if c - pre < 0 or c + post > len(x):
@@ -80,7 +85,8 @@ def median_beat(
     good = corr > 0.8
     if good.sum() >= 3:
         tmpl = np.median(m[good], axis=0)
-    return MedianBeat(tmpl, fs, pre, int(good.sum()), med_rr)
+    mean_rr = float(np.mean(rr[ok_rr])) if ok_rr.any() else float(np.median(rr))
+    return MedianBeat(tmpl, fs, pre, int(good.sum()), mean_rr)
 
 
 def delineate(mb: MedianBeat) -> Delineation:
@@ -90,8 +96,8 @@ def delineate(mb: MedianBeat) -> Delineation:
     ms = lambda v: round(v * fs / 1000.0)  # noqa: E731
 
     sign = 1.0 if x[r] >= np.median(x) else -1.0
-    d = np.abs(np.gradient(x)) * fs  # mV/s
-    d = uniform_filter1d(d, size=max(1, ms(8)))
+    d_raw = np.gradient(x) * fs  # mV/s
+    d = uniform_filter1d(np.abs(d_raw), size=max(1, ms(8)))
     q_lo = max(0, r - ms(120))
     q_hi = min(len(x), r + ms(140))
     dmax = float(np.max(d[q_lo:q_hi]))
@@ -136,30 +142,19 @@ def delineate(mb: MedianBeat) -> Delineation:
             t_peak = None
             t_amp = None
 
-    # P-Welle: bis 250 ms vor QRS-Beginn, aber nicht vor dem Ende der vorherigen T-Welle
+    # P-Welle: bis 300 ms vor QRS-Beginn, aber nicht vor dem Ende der vorherigen T-Welle
     # (bei hoher Frequenz überlappen sie sonst).
-    p_peak = p_onset = None
-    p_amp = None
     rr_n = round(mb.mean_rr_s * fs)
     prev_t_end = (t_end if t_end is not None else r + round(0.6 * rr_n)) - rr_n
-    p_lo = max(0, on - ms(250), prev_t_end + ms(10))
-    p_hi = on - ms(40)
-    if p_hi - p_lo > ms(40):
-        seg = x[p_lo:p_hi] - baseline
-        k = int(np.argmax(seg * sign))
-        amp = float(seg[k])
-        noise = float(np.std(np.diff(x[: max(ms(60), 4)]))) * 3
-        if abs(amp) > max(0.04, noise):
-            p_peak = p_lo + k
-            p_amp = amp
-            j = p_peak
-            while j > p_lo and abs(x[j] - baseline) > 0.15 * abs(amp):
-                j -= 1
-            p_onset = j
+    p_lo = max(0, on - ms(300), prev_t_end + ms(10))
+    p_hi = on - ms(30)
+    p_onset, p_peak, p_amp = _p_wave(x, d_raw, fs, p_lo, p_hi, sign)
 
     qrs_ms = (off - on) / fs * 1000.0
     qt_ms = (t_end - on) / fs * 1000.0 if t_end is not None else None
     pr_ms = (on - p_onset) / fs * 1000.0 if p_onset is not None else None
+    if pr_ms is not None and not 80.0 <= pr_ms <= 300.0:
+        p_onset, pr_ms = None, None  # unplausibel: lieber kein Wert als ein falscher
     rr = mb.mean_rr_s
     return Delineation(
         baseline_mv=baseline,
@@ -178,3 +173,41 @@ def delineate(mb: MedianBeat) -> Delineation:
         r_amp_mv=float(x[r] - baseline),
         t_amp_mv=t_amp,
     )
+
+
+def _p_wave(
+    x: np.ndarray, deriv: np.ndarray, fs: float, lo: int, hi: int, sign: float
+) -> tuple[int | None, int | None, float | None]:
+    """P-Welle im Fenster [lo, hi): (Beginn, Spitze, Amplitude) oder None.
+
+    Die Amplitude wird gegen eine Gerade zwischen den Fenstergrenzen gemessen, nicht gegen
+    den QRS-Beginn: Die PR-Strecke liegt oft etwas tiefer als die TP-Strecke
+    (Vorhof-Repolarisation), ein fester Bezugspegel verfehlt dann den Beginn der P-Welle.
+    Der Beginn ist die Stelle, ab der die Steigung über 16 ms ruhig bleibt. Erreicht die
+    Suche dabei den Fensterrand, gilt der Beginn als nicht bestimmbar.
+    """
+    ms = lambda v: round(v * fs / 1000.0)  # noqa: E731
+    if hi - lo <= ms(60):
+        return None, None, None
+    seg = x[lo:hi]
+    line = np.linspace(seg[0], seg[-1], len(seg))
+    rel = (seg - line) * sign
+    k = int(np.argmax(rel))
+    amp = float(rel[k])
+    # Rauschmaß: Rest nach Glättung über das ganze Template
+    smooth = uniform_filter1d(x, size=max(3, ms(20)))
+    noise = float(np.std(x - smooth))
+    if amp < max(0.03, 4.0 * noise) or k < ms(15):
+        return None, None, None
+    peak = lo + k
+    d = uniform_filter1d(np.abs(deriv), size=max(1, ms(8)))
+    thr = 0.2 * float(np.max(d[lo : peak + 1]))
+    w = max(2, ms(16))
+    j = peak
+    while j > lo and d[j] < thr:  # vom Gipfel in den ansteigenden Schenkel
+        j -= 1
+    while j - w > lo and float(np.max(d[j - w : j + 1])) >= thr:
+        j -= 1
+    if j - w <= lo:
+        return None, peak, amp * sign
+    return j, peak, amp * sign

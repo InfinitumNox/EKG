@@ -81,7 +81,12 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
   Es gibt eine 1:1-Papieransicht, einen Messschieber (ms, /min, mV) und die HRV für den gewählten Ausschnitt.
   Der Median-Schlag wird mit PR, QRS und QT/QTc vermessen (experimentell, Messpunkte eingezeichnet).
 - **Export:** EDF+ (z. B. EDFbrowser), WFDB (PhysioNet), CSV und ein PDF-Bericht im Papierformat.
-- **Kalibrierung:** Verstärkung und Frequenzgang des eigenen Boards über eine Loopback-Schaltung messen.
+- **Artefakt-Erkennung:** Extraschläge und Erkennungsfehler werden nach Lipponen & Tarvainen (2019) erkannt.
+  Starke, aber gleichmäßige HF-Schwankungen (Atmung, Kreislauf) gelten dabei als normal.
+- **Atmung:** Die Software schätzt die Atemfrequenz aus der R-Amplitude. Liegt die Atmung im LF-Band, wird LF/HF
+  als nicht deutbar markiert.
+- **Kalibrierung (optional):** Wer die mV-Werte genau braucht, misst die Verstärkung über eine Zusatzschaltung.
+  Für HF, HRV und Intervalle ist das nicht nötig.
 - **Simulator:** spricht das echte Protokoll. Szenarien: Sinusrhythmus, Extrasystolen, Vorhofflimmern,
   Brady-/Tachykardie, Artefakte, abfallende Elektrode.
 - **Kommandozeile:** `ekg-record --duration 300` (ohne Oberfläche), `ekg-export aufnahme.ekgrec --pdf b.pdf`.
@@ -103,5 +108,8 @@ uv run python ../tools/mitbih_benchmark.py                 # QRS-Erkennung gegen
   ist damit nicht möglich.
 - **Bandbreite des Boards typ. 0,5–40 Hz.** Damit ist keine ST-Strecken-Beurteilung möglich, und QRS-Details
   werden gerundet. Gemessen wird das mit der Kalibrierung.
-- **Intervalle (PR/QRS/QT) sind experimentell.** Sie sind nicht an echten Referenzdaten validiert.
+- **Intervalle (PR/QRS/QT) sind experimentell.** Geprüft ist nur der Median-Schlag einer realen Messung gegen
+  eine Bildablesung. Es gibt keinen Vergleich mit einem Klinik-EKG.
+- **Ohne Kalibrierung sind mV-Werte Näherungen.** Grundlage ist die Nennverstärkung 1100. Zeiten, HF und HRV
+  hängen davon nicht ab.
 - **Rhythmus-Hinweise sind Hinweise.** Sie sind kein Befund.

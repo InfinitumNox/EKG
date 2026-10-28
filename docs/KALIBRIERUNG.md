@@ -1,7 +1,11 @@
-# Kalibrierung: Verstärkung und Frequenzgang
+# Kalibrierung: Verstärkung und Frequenzgang (optional)
 
-Die Verstärkung des AD8232-Boards (nominal 1100) und seine Filter hängen von Bauteiltoleranzen ab.
-Ohne Kalibrierung sind die mV-Werte Näherungen. Die Software zeigt dann einen Hinweis.
+**Für den normalen Betrieb nicht nötig.** Herzfrequenz, RR-Intervalle, HRV und alle Zeitintervalle
+(PR, QRS, QT) hängen nicht von der Verstärkung ab. Nur die Amplituden in mV beruhen ohne Kalibrierung auf
+der Nennverstärkung von 1100. Wie weit die echte Verstärkung bei Klon-Boards davon abweicht, ist nicht gemessen.
+
+Die Verstärkung des AD8232-Boards und seine Filter hängen von Bauteiltoleranzen ab. Wer sie genau wissen
+will, braucht die folgende Zusatzschaltung.
 
 > **Während der Kalibrierung ist kein Mensch angeschlossen.** Elektrodenkabel abziehen.
 

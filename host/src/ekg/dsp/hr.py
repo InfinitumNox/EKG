@@ -57,3 +57,14 @@ def instantaneous_hr(r_index: np.ndarray, fs: float) -> tuple[np.ndarray, np.nda
     t = r[1:] / fs
     ok = (rr >= RR_MIN_S) & (rr <= RR_MAX_S)
     return t[ok], 60.0 / rr[ok]
+
+
+def smooth_hr(t_s: np.ndarray, hr: np.ndarray, window_s: float = 30.0) -> np.ndarray:
+    """Gleitender Median über ±window/2: zeigt den Verlauf ohne die Atemschwankung."""
+    t = np.asarray(t_s, dtype=np.float64)
+    h = np.asarray(hr, dtype=np.float64)
+    if len(t) == 0:
+        return h.copy()
+    lo = np.searchsorted(t, t - window_s / 2, side="left")
+    hi = np.searchsorted(t, t + window_s / 2, side="right")
+    return np.array([np.median(h[a:b]) for a, b in zip(lo, hi, strict=True)])

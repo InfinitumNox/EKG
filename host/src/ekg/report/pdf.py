@@ -6,6 +6,7 @@ Koordinaten in Millimetern; das Raster ist damit maßstabsgetreu ausdruckbar
 
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -22,7 +23,7 @@ from PySide6.QtGui import (
 )
 
 from ..analysis import Analysis
-from ..dsp.hrv import hrv_rows
+from ..dsp.hrv import hrv_rows, segment_rows
 from ..storage.recording import Recording
 
 PAGE_W, PAGE_H = 297.0, 210.0
@@ -251,20 +252,26 @@ def _summary_page(p: QPainter, rec: Recording, an: Analysis) -> None:
     _header(p, rec, f"Dauer {int(dur // 60)}:{int(dur % 60):02d} min")
     conv = rec.conversion
     dev = rec.header.get("device", {})
-    rows = [
-        ("Gerät", f"{dev.get('name', '')} FW {dev.get('firmware', '')}"),
+    rows: list[tuple[str, str]] = [
         (
-            "Verstärkung",
-            f"{conv.gain:.0f} ({'gemessen' if conv.gain_calibrated else 'nominal, nicht kalibriert'})",
+            "Gerät",
+            f"{dev.get('name') or '–'}"
+            + (f", FW {dev['firmware']}" if dev.get("firmware") else ""),
         ),
+        ("Verstärkung", f"{conv.gain:.0f} ({'gemessen' if conv.gain_calibrated else 'nominal'})"),
         ("Filter (Auswertung)", an.filter_settings.describe() + ", phasenfrei"),
         ("Testsignal", "ja – keine Messung am Menschen" if rec.test_signal else "nein"),
         ("Lücken / ohne Kontakt", f"{an.gap_s:.1f} s / {an.lead_off_s:.1f} s"),
+        ("", ""),
     ]
-    rows += hrv_rows(an.hrv)
+    rows += hrv_rows(an.hrv, an.breathing_hz)
+    seg = segment_rows(an.segments)
+    if seg:
+        rows += [("", ""), ("Kurzzeit-HRV", "Median (Spanne) der 5-min-Abschnitte")] + seg
     d = an.delineation
     if d:
         rows += [
+            ("", ""),
             ("PR (exp.)", _fmt(d.pr_ms, "ms")),
             ("QRS (exp.)", _fmt(d.qrs_ms, "ms")),
             (
@@ -272,18 +279,29 @@ def _summary_page(p: QPainter, rec: Recording, an: Analysis) -> None:
                 f"{_fmt(d.qt_ms, 'ms')} / {_fmt(d.qtc_bazett_ms, 'ms')} / {_fmt(d.qtc_fridericia_ms, 'ms')}",
             ),
         ]
-    y = 22.0
+    y = 21.0
     p.setPen(TRACE)
     for k, v in rows:
-        _text(p, MARGIN, y, k, size=3.0, w=60)
-        _text(p, MARGIN + 62, y, v, size=3.0, bold=True, w=80)
-        y += 5.2
+        if not k:
+            y += 1.6
+            continue
+        _text(p, MARGIN, y, k, size=2.8, w=62)
+        _text(p, MARGIN + 64, y, v, size=2.8, bold=True, w=78)
+        y += 4.6
     if an.hints:
         y += 2
-        _text(p, MARGIN, y, "Hinweise (keine Diagnose):", size=3.0, bold=True)
+        _text(p, MARGIN, y, "Hinweise (keine Diagnose):", size=2.8, bold=True)
         for h in an.hints:
-            y += 5
-            _text(p, MARGIN + 2, y, f"• {h}", size=3.0, w=140)
+            for i, line in enumerate(textwrap.wrap(h, 88)):
+                y += 4.6 if i == 0 else 3.8
+                _text(
+                    p,
+                    MARGIN + 2 + (0 if i == 0 else 2.5),
+                    y,
+                    ("• " if i == 0 else "") + line,
+                    size=2.8,
+                    w=140,
+                )
 
     # Median-Schlag, 50 mm/s und 20 mm/mV
     mb = an.median
@@ -303,41 +321,78 @@ def _summary_page(p: QPainter, rec: Recording, an: Analysis) -> None:
                     x = x0 + 6 + idx / mb.fs * 50
                     p.drawLine(QPointF(x, r.top()), QPointF(x, r.bottom()))
 
-    # HF-Trend
+    # HF-Trend: dünn Schlag für Schlag, dick der gleitende Median (30 s)
     tr = QRectF(160, 120, 125, 60)
-    p.setPen(_pen(QColor("#999999"), 0.15))
-    p.drawRect(tr)
     p.setPen(TRACE)
-    _text(p, tr.left(), tr.bottom() + 1, "Herzfrequenz über die Aufzeichnung", size=2.6, w=120)
+    _text(
+        p,
+        tr.left(),
+        tr.bottom() + 5,
+        "Herzfrequenz (/min): dünn je Schlag, dick gleitender Median über 30 s",
+        size=2.6,
+        w=125,
+    )
     if len(an.hr_bpm) > 1:
-        lo = max(30.0, float(np.percentile(an.hr_bpm, 1)) - 10)
-        hi = min(220.0, float(np.percentile(an.hr_bpm, 99)) + 10)
+        lo = 10 * np.floor((float(np.percentile(an.hr_bpm, 1)) - 5) / 10)
+        hi = 10 * np.ceil((float(np.percentile(an.hr_bpm, 99)) + 5) / 10)
+        lo, hi = max(20.0, lo), min(240.0, hi)
         t_max = max(float(an.hr_t[-1]), 1.0)
-        path = QPainterPath()
-        for i, (t, h) in enumerate(zip(an.hr_t, np.clip(an.hr_bpm, lo, hi), strict=True)):
-            pt = QPointF(
+
+        def pt(t: float, h: float) -> QPointF:
+            h = min(max(h, lo), hi)
+            return QPointF(
                 tr.left() + t / t_max * tr.width(), tr.bottom() - (h - lo) / (hi - lo) * tr.height()
             )
-            path.lineTo(pt) if i else path.moveTo(pt)
-        p.setPen(_pen(QColor("#c62828"), 0.25))
-        p.drawPath(path)
+
+        p.setPen(_pen(QColor("#dddddd"), 0.12))
+        for v in np.arange(lo, hi + 0.1, 10):
+            y0 = pt(0, float(v)).y()
+            p.drawLine(QPointF(tr.left(), y0), QPointF(tr.right(), y0))
+            p.setPen(TRACE)
+            _text(
+                p,
+                tr.left() - 11,
+                y0 - 1.3,
+                f"{v:.0f}",
+                size=2.2,
+                w=9,
+                align=Qt.AlignmentFlag.AlignRight,
+            )
+            p.setPen(_pen(QColor("#dddddd"), 0.12))
+        step_min = next(s for s in (1, 2, 5, 10, 15, 30, 60, 120, 240) if t_max / 60 / s <= 8)
+        for m in np.arange(0, t_max / 60 + 1e-9, step_min):
+            x0 = pt(m * 60, lo).x()
+            p.setPen(_pen(QColor("#dddddd"), 0.12))
+            p.drawLine(QPointF(x0, tr.top()), QPointF(x0, tr.bottom()))
+            p.setPen(TRACE)
+            _text(
+                p,
+                x0 - 5,
+                tr.bottom() + 0.8,
+                f"{m:.0f}",
+                size=2.2,
+                w=10,
+                align=Qt.AlignmentFlag.AlignHCenter,
+            )
+        _text(
+            p,
+            tr.right() - 20,
+            tr.bottom() + 0.8,
+            "min",
+            size=2.2,
+            w=20,
+            align=Qt.AlignmentFlag.AlignRight,
+        )
+        p.setPen(_pen(QColor("#999999"), 0.15))
+        p.drawRect(tr)
+        for series, color, width in (
+            (an.hr_bpm, QColor("#ef9a9a"), 0.15),
+            (an.hr_smooth, QColor("#b71c1c"), 0.45),
+        ):
+            path = QPainterPath()
+            for i, (t, h) in enumerate(zip(an.hr_t, series, strict=True)):
+                path.lineTo(pt(t, h)) if i else path.moveTo(pt(t, h))
+            p.setPen(_pen(color, width))
+            p.drawPath(path)
         p.setPen(TRACE)
-        _text(
-            p,
-            tr.left() - 12,
-            tr.top() - 1,
-            f"{hi:.0f}",
-            size=2.4,
-            w=10,
-            align=Qt.AlignmentFlag.AlignRight,
-        )
-        _text(
-            p,
-            tr.left() - 12,
-            tr.bottom() - 3,
-            f"{lo:.0f}",
-            size=2.4,
-            w=10,
-            align=Qt.AlignmentFlag.AlignRight,
-        )
     _footer(p)
