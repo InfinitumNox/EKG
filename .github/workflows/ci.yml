@@ -22,6 +22,14 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest
 
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck install.sh tools/*.sh
+      - name: Mitgelieferte Firmware passt zum Quellcode
+        run: tools/update_prebuilt.sh --check
+
   firmware:
     runs-on: ubuntu-24.04
     steps:

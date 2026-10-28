@@ -15,17 +15,17 @@ dependencies = [
     "PySide6>=6.6",
     "pyqtgraph>=0.13.4",
     "pyserial>=3.5",
-    "pyedflib>=0.1.36",
 ]
 
 [project.optional-dependencies]
 bench = ["wfdb>=4.1"]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "wfdb>=4.1"]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "wfdb>=4.1", "pyedflib>=0.1.36"]
 
 [project.scripts]
 ekg = "ekg.gui.app:main"
 ekg-record = "ekg.cli:record_main"
 ekg-export = "ekg.cli:export_main"
+ekg-flash = "ekg.flash:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ekg"]

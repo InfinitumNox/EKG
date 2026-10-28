@@ -18,49 +18,58 @@ Ein-Kanal-EKG (eine Ableitung) mit Desktop-Software für Linux (getestet für Fe
 | `host/` | Laptop-Software (Python, PySide6, pyqtgraph) |
 | `tools/` | MIT-BIH-Benchmark, Steckplan-Generator |
 
-## Schnellstart unter Fedora
-
-### 1. Einmalig: Rechte und ModemManager
+## Installation unter Fedora
 
 ```bash
-sudo usermod -aG dialout $USER                       # danach ab- und wieder anmelden
-sudo cp host/packaging/99-pico-ekg.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger
+git clone https://github.com/InfinitumNox/EKG.git
+cd EKG
+./install.sh
 ```
 
-Die udev-Regel verhindert, dass ModemManager den Pico als Modem anspricht und dabei Daten stört.
+Das Skript fragt bei Bedarf nach dem sudo-Passwort und erledigt:
 
-### 2. Firmware bauen und flashen
+1. **Laptop:**
+   - Es installiert die Software in eine eigene Umgebung (über `uv`, das System-Python bleibt unberührt).
+     Danach gibt es die Befehle `ekg`, `ekg-record`, `ekg-export` und `ekg-flash` sowie den Startmenü-Eintrag „EKG“.
+   - Es richtet die udev-Regel ein: Zugriff auf den Pico ohne Root und ohne Neuanmelden, und ModemManager
+     lässt die Schnittstelle in Ruhe.
+2. **Pico:** Es spielt die mitgelieferte Firmware (`firmware/prebuilt/ekg.uf2`) auf.
+   - **Beim allerersten Mal:** USB abziehen, BOOT-Taste halten, einstecken, loslassen. Das Skript wartet darauf.
+   - **Danach geht es automatisch,** die Firmware schaltet sich selbst in den Bootloader.
+
+| Befehl | Wirkung |
+|---|---|
+| `./install.sh` | alles (Laptop, dann Frage nach dem Pico) |
+| `./install.sh laptop` | nur die Laptop-Software (auch zum Aktualisieren) |
+| `./install.sh pico` | nur die Firmware aufspielen |
+| `./install.sh pico --build` | Firmware selbst bauen (installiert die ARM-Toolchain) und aufspielen |
+| `./install.sh uninstall` | alles entfernen; Aufnahmen und Einstellungen bleiben |
+
+Passt die mitgelieferte Firmware nicht mehr zum Quellcode (geprüft über `firmware/prebuilt/SOURCE_HASH`),
+baut das Skript sie automatisch neu.
+
+### Erste Messung
+
+1. `ekg --simulate` zeigt die Oberfläche ohne Hardware.
+2. Laptop-Ladekabel ziehen. Dann den Pico per USB anschließen.
+3. In `ekg` als Quelle **Pico EKG** wählen und **Verbinden** klicken. Es folgt ein Sicherheitscheck.
+   Zum Test erst *Gerät → Testsignal der Firmware* einschalten. Kommt das Test-EKG an, funktioniert die Kette
+   vom Pico bis zum Laptop.
+4. Testsignal aus, Elektroden anlegen (siehe [docs/AUFBAU.md](docs/AUFBAU.md#elektroden)), ruhig sitzen, 2 s warten.
+5. **● Aufnahme** startet die Rohdaten-Aufzeichnung, **Auswerten** öffnet sie danach.
+6. Einmalig: *Ansicht → Bildschirm kalibrieren*, damit 25 mm/s und 10 mm/mV am Bildschirm stimmen.
+
+### Von Hand (ohne Skript)
 
 ```bash
-sudo dnf install cmake ninja-build gcc-c++ git python3 \
-    arm-none-eabi-gcc-cs arm-none-eabi-gcc-cs-c++ arm-none-eabi-newlib
-cmake -S firmware -B build/firmware -G Ninja      # holt das Pico SDK 2.2.0 automatisch
-cmake --build build/firmware
+sudo cp host/packaging/70-pico-ekg.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
+uv tool install --python 3.13 "ekg[bench] @ file://$PWD/host"
+ekg-flash firmware/prebuilt/ekg.uf2       # oder die Datei aufs Laufwerk RP2350 kopieren
 ```
 
-BOOT-Taste am Pico gedrückt halten, USB einstecken, loslassen. Es erscheint ein Laufwerk `RP2350`,
-dorthin `build/firmware/ekg.uf2` kopieren. Später geht es ohne Taste: Menü *Gerät → Bootloader starten*.
-
-### 3. Laptop-Software
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh    # falls uv fehlt
-cd host
-uv venv && uv pip install -e ".[dev]"
-uv run ekg                       # Oberfläche
-uv run ekg --simulate            # ohne Hardware ausprobieren (auch: pvc, af, noisy, lead_off …)
-```
-
-Ohne uv: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && .venv/bin/ekg`.
-
-### 4. Erste Messung
-
-1. Laptop-Ladekabel ziehen. Dann den Pico per USB anschließen.
-2. In `ekg` als Quelle **Pico EKG** wählen und **Verbinden** klicken. Es folgt ein Sicherheitscheck.
-3. Elektroden anlegen (siehe [docs/AUFBAU.md](docs/AUFBAU.md#elektroden)), ruhig sitzen, 2 s warten.
-4. **● Aufnahme** startet die Rohdaten-Aufzeichnung, **Auswerten** öffnet sie danach.
-5. Einmalig: *Ansicht → Bildschirm kalibrieren*, damit 25 mm/s und 10 mm/mV am Bildschirm stimmen.
+Firmware selbst bauen: `sudo dnf install cmake ninja-build gcc-c++ git arm-none-eabi-gcc-cs
+arm-none-eabi-gcc-cs-c++ arm-none-eabi-newlib`, dann `cmake -S firmware -B build/firmware -G Ninja &&
+cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
 
 ## Was die Software kann
 
@@ -79,10 +88,11 @@ Ohne uv: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]" && .venv/bi
 
 Aufnahmen liegen in `~/.local/share/ekg/aufnahmen/`, Einstellungen und Kalibrierungen in `~/.config/ekg/`.
 
-## Tests
+## Entwicklung und Tests
 
 ```bash
-cd host && uv run pytest                                   # Host: Protokoll, DSP, Pipeline, Export, GUI
+cd host && uv venv && uv pip install -e ".[dev]"
+uv run pytest                                   # Host: Protokoll, DSP, Pipeline, Export, GUI
 cmake -S firmware/tests -B build/fw-tests && cmake --build build/fw-tests && build/fw-tests/test_firmware
 uv run python ../tools/mitbih_benchmark.py                 # QRS-Erkennung gegen MIT-BIH (lädt ~100 MB)
 ```

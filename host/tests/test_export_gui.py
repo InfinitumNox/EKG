@@ -42,7 +42,7 @@ def test_analysis(recording):
 
 
 def test_edf_roundtrip(recording, tmp_path):
-    import pyedflib
+    pyedflib = pytest.importorskip("pyedflib")  # unabhängige Referenz zum Lesen
 
     an = analyse(recording)
     path = export.export_edf(recording, tmp_path / "x.edf", an.r_index)

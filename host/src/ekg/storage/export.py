@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -21,52 +22,103 @@ from .recording import Recording
 def export_edf(
     rec: Recording, path: Path, r_peaks: Sequence[float] | np.ndarray | None = None
 ) -> Path:
-    import pyedflib
+    """Schreibt EDF+ (kontinuierlich) mit einem EKG-Kanal und einem Annotationskanal.
 
+    Eigene Implementierung nach der EDF+-Spezifikation (edfplus.info), damit keine
+    kompilierte Abhängigkeit nötig ist. Lücken werden linear überbrückt und annotiert.
+    """
     path = Path(path)
     fs = int(round(rec.fs))
+    if abs(rec.fs - fs) > 1e-9:
+        raise ValueError("EDF braucht eine ganzzahlige Abtastrate")
     mv, gap_mask = fill_gaps(rec.mv)
     uv = mv * 1000.0
-    n_records = int(np.ceil(len(uv) / fs))
+    n_records = max(1, int(np.ceil(len(uv) / fs)))
     uv = np.concatenate([uv, np.zeros(n_records * fs - len(uv))])
     phys = float(np.ceil(rec.conversion.full_scale_mv * 1000.0 * 1.05))
-    w = pyedflib.EdfWriter(str(path), 1, file_type=pyedflib.FILETYPE_EDFPLUS)
-    try:
-        # Platz für ~1 Annotation pro Schlag und Sekunde plus Marker.
-        w.set_number_of_annotation_signals(4 if r_peaks is not None else 1)
-        w.setSignalHeaders(
-            [
-                {
-                    "label": "EKG",
-                    "dimension": "uV",
-                    "sample_frequency": fs,
-                    "physical_max": phys,
-                    "physical_min": -phys,
-                    "digital_max": 32767,
-                    "digital_min": -32768,
-                    "transducer": "AD8232 Ag/AgCl",
-                    "prefilter": f"HW ~0.5-40Hz G={rec.conversion.gain:.0f}",
-                }
-            ]
-        )
-        fw = rec.header.get("device", {}).get("firmware", "")
-        w.setEquipment(f"Pico_EKG_{fw}".rstrip("_"))  # EDF-Kopf: nur ASCII ohne Leerzeichen
-        w.setPatientName("X")
-        w.setPatientCode("X")
-        start = rec.start_time
-        if start:
-            w.setStartdatetime(start.replace(tzinfo=None))
-        w.writeSamples([np.clip(uv, -phys, phys)])
-        for idx, text in rec.markers:
-            w.writeAnnotation(idx / rec.fs, -1, text[:40])
-        for start_idx, n in _runs(gap_mask):
-            w.writeAnnotation(start_idx / rec.fs, n / rec.fs, "Datenluecke")
-        if r_peaks is not None:
-            for r in r_peaks:
-                w.writeAnnotation(float(r) / rec.fs, -1, "R")
-    finally:
-        w.close()
+    dmin, dmax = -32768, 32767
+    digital = np.round((np.clip(uv, -phys, phys) + phys) / (2 * phys) * (dmax - dmin) + dmin)
+    digital = np.clip(digital, dmin, dmax).astype("<i2")
+
+    # Annotationen je Datensatz (1 s) sammeln: (Beginn s, Dauer s oder None, Text)
+    per_record: list[list[tuple[float, float | None, str]]] = [[] for _ in range(n_records)]
+
+    def add(onset: float, duration: float | None, text: str) -> None:
+        k = min(n_records - 1, max(0, int(onset)))
+        per_record[k].append((onset, duration, _edf_text(text)))
+
+    for idx, text in rec.markers:
+        add(idx / rec.fs, None, text)
+    for start_idx, n in _runs(gap_mask):
+        add(start_idx / rec.fs, n / rec.fs, "Datenluecke")
+    if r_peaks is not None:
+        for r in r_peaks:
+            add(float(r) / rec.fs, None, "R")
+
+    tals = [_tal_record(k, anns) for k, anns in enumerate(per_record)]
+    ann_samples = max(30, (max(len(t) for t in tals) + 1) // 2)  # 2 Byte je "Sample"
+
+    start = rec.start_time or datetime.now().astimezone()
+    fw = rec.header.get("device", {}).get("firmware", "")
+    equipment = _edf_text(f"Pico_EKG_{fw}".rstrip("_")).replace(" ", "_")
+    month = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+    rec_id = f"Startdate {start.day:02d}-{month[start.month - 1]}-{start.year} X X {equipment}"
+
+    def field(value: object, width: int) -> bytes:
+        text = str(value).encode("ascii", errors="replace")
+        if len(text) > width:
+            raise ValueError(f"EDF-Feld zu lang: {value!r}")
+        return text.ljust(width, b" ")
+
+    def num(v: float) -> str:
+        return f"{v:.0f}" if float(v).is_integer() else f"{v:.6g}"
+
+    ns = 2
+    header = b"".join(
+        [
+            field("0", 8),
+            field("X X X X", 80),
+            field(rec_id, 80),
+            field(start.strftime("%d.%m.%y"), 8),
+            field(start.strftime("%H.%M.%S"), 8),
+            field(256 * (ns + 1), 8),
+            field("EDF+C", 44),
+            field(n_records, 8),
+            field(1, 8),
+            field(ns, 4),
+            field("EKG", 16) + field("EDF Annotations", 16),
+            field("AD8232 Ag/AgCl electrodes", 80) + field("", 80),
+            field("uV", 8) + field("", 8),
+            field(num(-phys), 8) + field(-1, 8),
+            field(num(phys), 8) + field(1, 8),
+            field(dmin, 8) + field(dmin, 8),
+            field(dmax, 8) + field(dmax, 8),
+            field(f"HW ~0.5-40Hz G={rec.conversion.gain:.0f}", 80) + field("", 80),
+            field(fs, 8) + field(ann_samples, 8),
+            field("", 32) + field("", 32),
+        ]
+    )
+    assert len(header) == 256 * (ns + 1)
+    with open(path, "wb") as f:
+        f.write(header)
+        for k in range(n_records):
+            f.write(digital[k * fs : (k + 1) * fs].tobytes())
+            f.write(tals[k].ljust(2 * ann_samples, b"\0"))
     return path
+
+
+def _edf_text(text: str) -> str:
+    """EDF+-Annotationen: UTF-8 erlaubt, aber keine Steuerzeichen."""
+    return "".join(ch for ch in text if ch >= " ")[:40]
+
+
+def _tal_record(k: int, anns: list[tuple[float, float | None, str]]) -> bytes:
+    """Time-stamped Annotation Lists eines Datensatzes; der erste TAL hält die Zeitbasis."""
+    out = f"+{k}\x14\x14\x00".encode()
+    for onset, duration, text in anns:
+        dur = f"\x15{duration:.4f}" if duration is not None else ""
+        out += f"+{onset:.4f}{dur}\x14{text}\x14\x00".encode()
+    return out
 
 
 def export_wfdb(

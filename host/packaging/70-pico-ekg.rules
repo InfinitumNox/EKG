@@ -1,0 +1,7 @@
+# Pico EKG (Raspberry-Pi-VID 2e8a)
+# - uaccess: der angemeldete Benutzer darf sofort zugreifen (kein Neuanmelden nötig);
+#   muss vor 73-seat-late.rules laufen, daher die Nummer 70.
+# - dialout: Rückfall für Sitzungen ohne systemd-logind (z. B. SSH).
+# - ModemManager fernhalten, sonst schickt er AT-Befehle an die Datenschnittstelle.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", TAG+="uaccess", MODE="0660", GROUP="dialout", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="2e8a", TAG+="uaccess", ENV{ID_MM_DEVICE_IGNORE}="1"
