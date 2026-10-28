@@ -37,6 +37,8 @@ Für Phase 2 (Display, Akku) gilt dasselbe: USB nur einstecken, wenn kein Mensch
 
 ### 2.1 Verdrahtung
 
+Den Steckplan mit Lochpositionen gibt es in [docs/AUFBAU.md](docs/AUFBAU.md) und als Grafik in [docs/breadboard.svg](docs/breadboard.svg).
+
 Die Pin-Nummern beziehen sich auf das **offizielle Pico-2-Layout**. Das Board ist ein Klon, deshalb vor dem Verdrahten die Beschriftung auf der Unterseite prüfen.
 
 | AD8232 | Pico 2 | Pin | Hinweis |
@@ -251,8 +253,8 @@ Die Echtzeit-Kette ist bewusst einfach gehalten (IIR plus Pan-Tompkins), damit s
 
 ### 8.1 Loopback: Verstärkung und Frequenzgang des Klons
 
-Die Pico-PWM an GP15 wird über einen RC-Tiefpass 2. Ordnung (≈ 1 kHz) geglättet und dann über einen **1000:1-Teiler** an die AD8232-Eingänge gelegt. Prinzip: 100 kΩ zur LA, 100 Ω zwischen LA und RA, RA und RL an eine Mittenspannung von 1,65 V (Teiler 2 × 10 kΩ).
-Die genaue Schaltung wird in M4 festgelegt und geprüft, **währenddessen ist kein Mensch angeschlossen**.
+Die Pico-PWM an GP15 wird über zwei RC-Glieder (2 × 1 kΩ / 100 nF, ≈ 1,6 kHz) geglättet und dann über einen **~1000:1-Teiler** an die AD8232-Eingänge gelegt: 100 kΩ zur LA, 100 Ω zwischen LA und RA, RA und RL an 1,65 V (Teiler 2 × 1 kΩ).
+Die Schaltung steht in [docs/KALIBRIERUNG.md](docs/KALIBRIERUNG.md). **Währenddessen ist kein Mensch angeschlossen.**
 
 - **Verstärkung:** 1-mV-Rechteck einspeisen. Ziel ist eine Unsicherheit von ±2–3 %, begrenzt durch Widerstandstoleranz und 3,3-V-Genauigkeit.
 - **Frequenzgang:** Sinus-Sweep von 0,05 bis 150 Hz ergibt die tatsächlichen Eckfrequenzen. Sie werden in der GUI als Gerätedaten hinterlegt.
@@ -314,9 +316,23 @@ PLAN.md     dieses Dokument
 | Falsche Interpretation der Ergebnisse | Rhythmus nur als „Hinweis“, deutlicher Hinweis „nicht diagnostisch“ |
 | Laptop-Ladekabel bleibt beim Messen versehentlich stecken | Option: Software warnt, wenn `/sys/class/power_supply/*/online` = 1 |
 
-## 12. Entscheidungen, die noch offen sind
+## 12. Entscheidungen (getroffen)
 
-1. **Host-Stack:** Python/PySide6 (empfohlen) oder Rust/egui?
-2. **DSP-Ort in Phase 1:** auf dem Host (empfohlen, schneller iterierbar) oder sofort in der Firmware?
-3. **Abtastrate:** 500 Hz (empfohlen) oder 1000 Hz?
-4. **Prioritäten:** Welche Soll- und Kann-Funktionen sind dir wichtig?
+| Frage | Entscheidung | Begründung |
+|---|---|---|
+| Host-Stack | **Python 3.11+, PySide6, pyqtgraph, NumPy/SciPy** | Für die Validierung (MIT-BIH, EDF+, WFDB) gibt es nur hier fertige Werkzeuge; die Live-Darstellung zeichnet mit QPainter selbst und ist schnell genug. |
+| DSP-Ort in Phase 1 | **Host** | Schneller iterierbar und gegen Referenzdaten testbar. Die Echtzeit-Kette (IIR + Pan-Tompkins) ist bewusst einfach, damit sie sich in Phase 2 nach C portieren lässt. |
+| Abtastrate | **500 Hz** (1000 Hz wählbar) | 500 Hz ist der übliche Mindestwert für EKG-Morphologie; 1000 Hz bringt bei 40 Hz Bandbreite nur feinere RR-Auflösung. |
+| Prioritäten | Alle Muss- und Soll-Funktionen aus 5.3 umgesetzt, dazu der Kalibrier-Assistent und die Rhythmus-Hinweise | – |
+
+## 13. Stand
+
+| # | Status | Anmerkung |
+|---|---|---|
+| M0 | offen (Hardware) | Steckplan und Prüfliste in docs/AUFBAU.md |
+| M1 | Code fertig, auf Hardware ungetestet | Firmware baut für RP2350; Protokoll, Dezimation und Testsignal sind auf dem Host getestet (gleicher Golden-Frame in C und Python) |
+| M2 | fertig (mit Simulator getestet) | Live-Ansicht, absturzsichere Rohaufnahme, Lückenerkennung |
+| M3 | fertig (synthetisch getestet) | MIT-BIH-Benchmark muss noch lokal laufen: `tools/mitbih_benchmark.py` |
+| M4 | Werkzeug fertig, Messung offen | Kalibrier-Assistent gegen den simulierten Loopback getestet (Verstärkung ±1 %) |
+| M5 | fertig | EDF+/WFDB/CSV/PDF, Messschieber, HRV, Median-Schlag |
+| M6 | offen | Phase 2 |

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=EKG
+Comment=1-Kanal-EKG mit AD8232 und Pico 2 (nicht diagnostisch)
+Exec=ekg
+Icon=utilities-system-monitor
+Categories=Science;MedicalSoftware;
+Terminal=false

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ekg"
+version = "0.1.0"
+description = "Desktop-Software für ein 1-Kanal-EKG (AD8232 + Raspberry Pi Pico 2)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.11",
+    "PySide6>=6.6",
+    "pyqtgraph>=0.13.4",
+    "pyserial>=3.5",
+    "pyedflib>=0.1.36",
+]
+
+[project.optional-dependencies]
+bench = ["wfdb>=4.1"]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "wfdb>=4.1"]
+
+[project.scripts]
+ekg = "ekg.gui.app:main"
+ekg-record = "ekg.cli:record_main"
+ekg-export = "ekg.cli:export_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ekg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY"]
+# Zeilenlänge regelt der Formatter; lange deutsche Texte bleiben am Stück.
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
