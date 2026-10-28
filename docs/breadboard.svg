@@ -476,14 +476,6 @@
 <text x="442.0" y="752.0" text-anchor="end" class="pin">3.3V</text>
 <rect x="448.0" y="764.0" width="12" height="12" fill="#ffd54f" stroke="#7a5c00"/>
 <text x="442.0" y="774.0" text-anchor="end" class="pin">GND</text>
-<line x1="520.0" y1="726.0" x2="520.0" y2="638.0" stroke="#777" stroke-width="2"/>
-<rect x="514.0" y="664.0" width="12" height="36" rx="5" fill="#d7b98e" stroke="#6d4c2a"/>
-<circle cx="520.0" cy="726.0" r="3.5" fill="#555"/>
-<circle cx="520.0" cy="638.0" r="3.5" fill="#555"/>
-<line x1="542.0" y1="308.0" x2="542.0" y2="264.0" stroke="#777" stroke-width="2"/>
-<ellipse cx="542.0" cy="286.0" rx="8" ry="10" fill="#f9a825" stroke="#8a5a00"/>
-<circle cx="542.0" cy="308.0" r="3.5" fill="#555"/>
-<circle cx="542.0" cy="264.0" r="3.5" fill="#555"/>
 <line x1="498.0" y1="748.0" x2="498.0" y2="770.0" stroke="#777" stroke-width="2"/>
 <ellipse cx="498.0" cy="759.0" rx="8" ry="10" fill="#f9a825" stroke="#8a5a00"/>
 <circle cx="498.0" cy="748.0" r="3.5" fill="#555"/>
@@ -508,8 +500,8 @@
 <path d="M476.0,770.0 C668.0,770.0 668.0,264.0 520.0,264.0" fill="none" stroke="#212121" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
 <circle cx="476.0" cy="770.0" r="4.5" fill="#212121" stroke="#000" stroke-width="0.8"/>
 <circle cx="520.0" cy="264.0" r="4.5" fill="#212121" stroke="#000" stroke-width="0.8"/>
-<path d="M542.0,638.0 C712.0,638.0 712.0,308.0 520.0,308.0" fill="none" stroke="#fbc02d" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
-<circle cx="542.0" cy="638.0" r="4.5" fill="#fbc02d" stroke="#000" stroke-width="0.8"/>
+<path d="M476.0,726.0 C690.0,726.0 690.0,308.0 520.0,308.0" fill="none" stroke="#fbc02d" stroke-width="4" stroke-linecap="round" opacity="0.9"/>
+<circle cx="476.0" cy="726.0" r="4.5" fill="#fbc02d" stroke="#000" stroke-width="0.8"/>
 <circle cx="520.0" cy="308.0" r="4.5" fill="#fbc02d" stroke="#000" stroke-width="0.8"/>
 <text x="1022.0" y="144.0" style="font-size:13px;font-weight:bold">Drähte</text>
 <line x1="1022.0" y1="162.0" x2="1048.0" y2="162.0" stroke="#1e88e5" stroke-width="4"/>
@@ -523,12 +515,10 @@
 <line x1="1022.0" y1="234.0" x2="1048.0" y2="234.0" stroke="#212121" stroke-width="4"/>
 <text x="1056.0" y="238.0" class="lbl">g31 → i8  GND → AGND</text>
 <line x1="1022.0" y1="252.0" x2="1048.0" y2="252.0" stroke="#fbc02d" stroke-width="4"/>
-<text x="1056.0" y="256.0" class="lbl">j25 → i10  ADC-Knoten → GP26</text>
+<text x="1056.0" y="256.0" class="lbl">g29 → i10  OUTPUT → GP26/ADC0</text>
 <text x="1022.0" y="284.0" style="font-size:13px;font-weight:bold">Bauteile</text>
-<text x="1022.0" y="302.0" class="lbl">R1 1 kΩ: i29 – i25</text>
-<text x="1022.0" y="320.0" class="lbl">C1 100 nF: j10 – j8</text>
-<text x="1022.0" y="338.0" class="lbl">C2 100 nF: h30 – h31</text>
-<text x="1022.0" y="356.0" class="lbl">C3 10 µF (+ oben): j30 – j31</text>
-<text x="1022.0" y="384.0" class="small">Ohne R1: Draht i29 → i10, dann C1 weglassen.</text>
-<text x="1022.0" y="400.0" class="small">Stromschienen werden nicht benutzt.</text>
+<text x="1022.0" y="302.0" class="lbl">C1 100 nF: h30 – h31</text>
+<text x="1022.0" y="320.0" class="lbl">C2 10 µF (+ oben): j30 – j31</text>
+<text x="1022.0" y="348.0" class="small">Keinen Kondensator direkt an OUTPUT/GP26 hängen.</text>
+<text x="1022.0" y="364.0" class="small">Stromschienen werden nicht benutzt.</text>
 </svg>

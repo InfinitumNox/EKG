@@ -41,14 +41,12 @@ WIRES = [
     (("g", 28), ("i", 14), "#8e24aa", "LO− → GP21"),
     (("g", 30), ("i", 5), "#e53935", "3.3V → 3V3(OUT)"),
     (("g", 31), ("i", 8), "#212121", "GND → AGND"),
-    (("j", 25), ("i", 10), "#fbc02d", "ADC-Knoten → GP26"),
+    (("g", 29), ("i", 10), "#fbc02d", "OUTPUT → GP26/ADC0"),
 ]
 # (Bauteil, von, nach, Beschriftung)
 PARTS = [
-    ("R", ("i", 29), ("i", 25), "R1 1 kΩ"),
-    ("C", ("j", 10), ("j", 8), "C1 100 nF"),
-    ("C", ("h", 30), ("h", 31), "C2 100 nF"),
-    ("E", ("j", 30), ("j", 31), "C3 10 µF (+ oben)"),
+    ("C", ("h", 30), ("h", 31), "C1 100 nF"),
+    ("E", ("j", 30), ("j", 31), "C2 10 µF (+ oben)"),
 ]
 
 
@@ -217,7 +215,7 @@ def svg() -> str:
         )
     y += 18 + len(PARTS) * 18 + 10
     out.append(
-        f'<text x="{lx}" y="{y}" class="small">Ohne R1: Draht i29 → i10, dann C1 weglassen.</text>'
+        f'<text x="{lx}" y="{y}" class="small">Keinen Kondensator direkt an OUTPUT/GP26 hängen.</text>'
     )
     out.append(
         f'<text x="{lx}" y="{y + 16}" class="small">Stromschienen werden nicht benutzt.</text>'

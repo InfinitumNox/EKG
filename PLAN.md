@@ -45,7 +45,7 @@ Die Pin-Nummern beziehen sich auf das **offizielle Pico-2-Layout**. Das Board is
 |---|---|---|---|
 | GND | AGND | 33 | Analoge Masse, Bezug des ADC |
 | 3.3V | 3V3(OUT) | 36 | Ratiometrisch: AD8232 und ADC-Referenz hängen an derselben 3,3-V-Schiene |
-| OUTPUT | GP26 / ADC0 | 31 | Optional 1 kΩ in Reihe + 100 nF nach AGND direkt am Pin (fc ≈ 1,6 kHz, gegen HF-Einstreuung) |
+| OUTPUT | GP26 / ADC0 | 31 | Direkt, ohne RC-Glied; Anti-Aliasing übernehmen der 40-Hz-Tiefpass des Boards und die 64-fach-Mittelung |
 | LO+ | GP20 | 26 | Lead-off-Erkennung, digitaler Ausgang des AD8232 |
 | LO− | GP21 | 27 | dito |
 | SDN | GP22 | 29 | Wird von der Firmware auf High gelegt; Low schaltet den AD8232 ab (später fürs Akku-Sparen) |

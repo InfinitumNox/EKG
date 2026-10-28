@@ -32,7 +32,7 @@ Die Stromschienen werden **nicht** verwendet. Dein Breadboard hat in der Mitte g
 | SDN | g26 | GP22 | i12 | 29 |
 | LO+ | g27 | GP20 | i15 | 26 |
 | LO− | g28 | GP21 | i14 | 27 |
-| OUTPUT | über R1 (i29 → i25), dann Draht j25 | GP26 / ADC0 | i10 | 31 |
+| OUTPUT | g29 | GP26 / ADC0 | i10 | 31 |
 | 3.3V | g30 | 3V3(OUT) | i5 | 36 |
 | GND | g31 | AGND | i8 | 33 |
 
@@ -40,14 +40,13 @@ Die Stromschienen werden **nicht** verwendet. Dein Breadboard hat in der Mitte g
 
 | Bauteil | Wert | Löcher | Zweck |
 |---|---|---|---|
-| R1 | 1 kΩ | i29 – i25 | entkoppelt den AD8232-Ausgang vom Kondensator am ADC |
-| C1 | 100 nF Keramik | j10 – j8 | Tiefpass ~1,6 kHz direkt am ADC-Pin, puffert die Abtastung |
-| C2 | 100 nF Keramik | h30 – h31 | Abblockkondensator am AD8232 |
-| C3 | 10 µF (Elko: + an j30) | j30 – j31 | Abblockkondensator am AD8232 |
+| C1 | 100 nF Keramik | h30 – h31 | Abblockkondensator am AD8232 |
+| C2 | 10 µF (Elko: + an j30) | j30 – j31 | Abblockkondensator am AD8232 |
 
-R1 und C1 sind optional. Ohne sie einfach einen Draht von **i29 nach i10** stecken und C1 weglassen.
-Den Kondensator nie ohne R1 direkt an den AD8232-Ausgang hängen, das kann den Ausgangsverstärker
-zum Schwingen bringen.
+Der AD8232-Ausgang geht direkt an den ADC, ohne RC-Glied. Das reicht: Das Board filtert selbst bei
+~40 Hz, und die Mittelung über 64 ADC-Werte unterdrückt hochfrequente Einstreuung zusätzlich.
+Keinen Kondensator direkt zwischen OUTPUT/GP26 und GND hängen: Ohne Vorwiderstand kann das den
+Ausgangsverstärker des AD8232 zum Schwingen bringen.
 
 ### Prüfen vor dem ersten Einschalten
 
