@@ -351,8 +351,14 @@ class MainWindow(QMainWindow):
             )
         else:
             path = recordings_dir() / default_filename()
+            self._power = power_status()
             self.pipeline.start_recording(
-                path, {"source": self.source_desc, "simulator": self.is_simulator}
+                path,
+                {
+                    "source": self.source_desc,
+                    "simulator": self.is_simulator,
+                    "power": self._power.to_dict(),
+                },
             )
             self._rec_started = time.monotonic()
             self.act_record.setText("■ Stopp")
@@ -407,7 +413,11 @@ class MainWindow(QMainWindow):
 
     # ================================================================ Laufende Anzeige
     def _check_power(self) -> None:
-        self._power = power_status()
+        old, self._power = self._power, power_status()
+        if self._power.state != old.state:
+            # Bei laufender Aufnahme festhalten: erklärt Netzbrumm und zeigt Verstöße
+            # gegen die Sicherheitsregel auch im Nachhinein.
+            self.pipeline.recorder_event({"type": "power", **self._power.to_dict()})
 
     def _tick(self) -> None:
         pl = self.pipeline

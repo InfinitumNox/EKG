@@ -136,8 +136,9 @@ class LivePipeline:
                 self.recorder.write_marker(idx, text)
 
     def recorder_event(self, event: dict[str, Any]) -> None:
-        if self.recorder:
-            self.recorder.write_event(self.display.end, event)
+        with self._lock:  # auch aus dem GUI-Thread, parallel zu den Samples
+            if self.recorder:
+                self.recorder.write_event(self.display.end, event)
 
     # --------------------------------------------------------------- Verarbeitung
     def push(self, pkt: SamplesPacket) -> None:

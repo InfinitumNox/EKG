@@ -26,6 +26,21 @@ from .dsp.signal_quality import RecordingQuality, assess_recording, invalid_mask
 from .protocol import Flag
 from .storage.recording import Recording
 
+POWER_LABELS = {
+    "battery": "Akku",
+    "external": "Netzteil angeschlossen",
+    "no_battery": "kein Akku erkannt",
+    "unknown": "unbekannt",
+}
+
+
+def power_states(rec: Recording) -> list[str]:
+    """Stromversorgung des Laptops: Zustand bei Beginn, dann jeder Wechsel (ältere
+    Aufnahmen enthalten die Angabe nicht)."""
+    states = [str(rec.header["power"]["state"])] if "power" in rec.header else []
+    states += [str(e["state"]) for _i, e in rec.events if e.get("type") == "power"]
+    return states
+
 
 @dataclass
 class Analysis:
@@ -44,6 +59,7 @@ class Analysis:
     quality: RecordingQuality = field(default_factory=RecordingQuality)
     ectopy: Ectopy = field(default_factory=Ectopy)
     invalid: Intervals = field(default_factory=list)
+    power: list[str] = field(default_factory=list)
     hints: list[str] = field(default_factory=list)
     lead_off_s: float = 0.0
     gap_s: float = 0.0
@@ -77,7 +93,20 @@ def analyse(
     invalid = mask_intervals(mask, fs)
     mv_clean = mv.copy()
     mv_clean[mask] = np.nan
-    quality = assess_recording(mv, rec.flags, mask, fs)
+    power = power_states(rec)
+    on_battery = bool(power) and all(s == "battery" for s in power)
+    quality = assess_recording(mv, rec.flags, mask, fs, on_battery if power else None)
+    if not rec.test_signal and not rec.header.get("simulator"):
+        if "external" in power:
+            quality.notes.insert(
+                0,
+                "Der Laptop hing während der Aufnahme am Netzteil. Ohne galvanische Trennung "
+                "dürfen Elektroden nur im Akkubetrieb am Körper sein (docs/AUFBAU.md).",
+            )
+        elif "no_battery" in power:
+            quality.notes.insert(
+                0, "Kein Akku erkannt (Desktop-PC?): nur mit USB-Isolator messen (docs/AUFBAU.md)."
+            )
 
     step("Filtern (phasenfrei)", 0.1)
     filtered = zero_phase(mv_clean, fs, settings)
@@ -128,6 +157,7 @@ def analyse(
         quality=quality,
         ectopy=ectopy,
         invalid=invalid,
+        power=power,
         hints=hints,
         lead_off_s=float(lead_off.sum() / fs),
         gap_s=float((~np.isfinite(rec.raw)).sum() / fs),
@@ -147,6 +177,9 @@ def quality_rows(an: Analysis) -> list[tuple[str, str]]:
                 f"{q.mains_uv:.0f} µV eff., {level} ({100 * q.mains_ratio:.0f} %)",
             )
         )
+    if an.power:
+        seq = [s for i, s in enumerate(an.power) if i == 0 or s != an.power[i - 1]]
+        rows.append(("Laptop-Stromversorgung", " → ".join(POWER_LABELS.get(s, s) for s in seq)))
     rows.append(("Lücken / ohne Kontakt", f"{an.gap_s:.1f} s / {an.lead_off_s:.1f} s"))
     if q.masked_s:
         rows.append(("Ausgeblendet (Übersteuerung)", f"{q.masked_s:.1f} s"))

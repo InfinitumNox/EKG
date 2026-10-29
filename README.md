@@ -89,7 +89,8 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
 - **Atmung:** Die Software schätzt die Atemfrequenz aus der R-Amplitude und gibt sie nur an, wenn das RR-Spektrum
   dieselbe Frequenz zeigt. Liegt die Atmung im LF-Band, wird LF/HF als nicht deutbar markiert.
 - **Signalqualität der Aufnahme:** Der Bericht nennt den 50-Hz-Brumm im ungefilterten Signal. Viel Brumm heißt
-  schlechter Elektrodenkontakt oder eine Verbindung zum Stromnetz.
+  schlechter Elektrodenkontakt oder eine Verbindung zum Stromnetz. Ob der Laptop am Netzteil hing, steht in der
+  Aufnahme (Beginn und jeder Wechsel) und im Bericht.
 - **Kalibrierung (optional):** Wer die mV-Werte genau braucht, misst die Verstärkung über eine Zusatzschaltung.
   Für HF, HRV und Intervalle ist das nicht nötig.
 - **Simulator:** spricht das echte Protokoll. Szenarien: Sinusrhythmus, Extrasystolen, Vorhofflimmern,

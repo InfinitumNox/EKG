@@ -12,8 +12,9 @@
 | Kalibriersignal (GP15) nur **ohne Menschen** am Gerät | – |
 | Desktop-PC: nur mit **USB-Isolator** (ADuM3160/4160) | Ein Desktop-PC ist immer netzbetrieben. |
 
-Die Software warnt, wenn sie ein angeschlossenes Netzteil erkennt (`/sys/class/power_supply`).
-Einen HDMI-Monitor oder ein Dock sieht sie aber **nicht**. Die Warnung ist eine Erinnerung, kein Schutz.
+Die Software warnt, wenn sie ein angeschlossenes Netzteil erkennt (`/sys/class/power_supply`), und vermerkt
+das in der Aufnahme und im Bericht. Einen HDMI-Monitor oder ein Dock sieht sie aber **nicht**. Die Warnung ist
+eine Erinnerung, kein Schutz.
 
 ## Steckplan
 

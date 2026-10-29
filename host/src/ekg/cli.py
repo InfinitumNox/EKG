@@ -11,6 +11,7 @@ from pathlib import Path
 from . import protocol as P
 from .config import Settings, recordings_dir
 from .pipeline import LivePipeline
+from .power import power_status
 from .storage.recording import default_filename, load_recording
 from .units import Conversion
 
@@ -73,7 +74,15 @@ def record_main(argv: list[str] | None = None) -> int:
     pl = LivePipeline(info.sample_rate_hz, conv)
     pl.set_info(info)
     out = args.out or recordings_dir() / default_filename()
-    pl.start_recording(out, {"source": "ekg-record"})
+    power = power_status()
+    if not args.simulate and not args.test and not power.safe_for_electrodes:
+        print(
+            "WARNUNG: Laptop nicht im Akkubetrieb ("
+            + (power.detail or power.state.value)
+            + ") – Elektroden nur ohne Netzteil am Körper!",
+            file=sys.stderr,
+        )
+    pl.start_recording(out, {"source": "ekg-record", "power": power.to_dict()})
     print(f"Aufnahme nach {out} ({args.duration:.0f} s, Strg+C beendet früher)")
     cmd(P.Opcode.START)
     t_end = time.monotonic() + args.duration

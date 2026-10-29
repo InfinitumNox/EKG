@@ -179,6 +179,38 @@ def test_mains_hum_is_reported(mains_mv, note):
         assert "Netzteil" in q.notes[0]
 
 
+def power_recording(start: str | None, changes: tuple[str, ...] = ()) -> Recording:
+    """60 s Ruhe-EKG mit starkem Brumm; Stromversorgung wie von der Oberfläche gespeichert."""
+    conv = Conversion()
+    mv = SyntheticEcg(FS, scenario=Scenario.REST, seed=1, mains_mv=0.3).generate(FS * 60)
+    raw = conv.mv_to_raw(mv).astype(np.float64)
+    header = {"power": {"state": start, "detail": ""}} if start else {}
+    events = [(FS * 20 * (k + 1), {"type": "power", "state": s}) for k, s in enumerate(changes)]
+    flags = np.zeros(len(raw), dtype=np.uint8)
+    return Recording(None, header, FS, conv, raw, flags, events=events)
+
+
+def signal_notes(an) -> list[str]:
+    return [n for n in an.notes if n.startswith("Signal: ")]
+
+
+def test_power_state_explains_mains_hum():
+    an = analyse(power_recording("battery"))
+    assert dict(quality_rows(an))["Laptop-Stromversorgung"] == "Akku"
+    assert "obwohl der Laptop auf Akku lief" in signal_notes(an)[0]
+
+    an = analyse(power_recording("battery", ("external", "battery")))
+    row = dict(quality_rows(an))["Laptop-Stromversorgung"]
+    assert row == "Akku → Netzteil angeschlossen → Akku"
+    assert signal_notes(an)[0].startswith(
+        "Signal: Der Laptop hing während der Aufnahme am Netzteil"
+    )
+
+    old = analyse(power_recording(None))  # Aufnahmen vor 0.2.1 enthalten die Angabe nicht
+    assert "Laptop-Stromversorgung" not in dict(quality_rows(old))
+    assert "nicht am Netzteil hing" in signal_notes(old)[0]
+
+
 def breathing_for(seed: int, amp_mod: float, extra_amp_hz: float | None = None) -> float | None:
     g = SyntheticEcg(FS, scenario=Scenario.REST, seed=seed)
     g.amp_mod = amp_mod

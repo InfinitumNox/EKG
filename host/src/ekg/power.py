@@ -30,6 +30,10 @@ class PowerStatus:
     def safe_for_electrodes(self) -> bool:
         return self.state == PowerState.BATTERY
 
+    def to_dict(self) -> dict[str, str]:
+        """Für Kopf und Ereignisse einer Aufnahme."""
+        return {"state": self.state.value, "detail": self.detail}
+
 
 def _read(p: Path) -> str:
     try:

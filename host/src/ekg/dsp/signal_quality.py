@@ -66,8 +66,13 @@ def mains_level(mv: np.ndarray, fs: float) -> tuple[float | None, float | None]:
 
 
 def assess_recording(
-    mv: np.ndarray, flags: np.ndarray, mask: np.ndarray, fs: float
+    mv: np.ndarray,
+    flags: np.ndarray,
+    mask: np.ndarray,
+    fs: float,
+    on_battery: bool | None = None,
 ) -> RecordingQuality:
+    """on_battery: Laptop lief laut Aufnahme durchgehend auf Akku (None: unbekannt)."""
     q = RecordingQuality()
     clip = (flags & Flag.CLIP) != 0
     q.clipped_s = float(clip.sum() / fs)
@@ -75,7 +80,13 @@ def assess_recording(
     lead_off = (flags & (Flag.LO_PLUS | Flag.LO_MINUS)) != 0
     q.mains_uv, q.mains_ratio = mains_level(np.where(lead_off, np.nan, mv), fs)
     if q.mains_ratio is not None:
-        if q.mains_ratio > 0.5:
+        if q.mains_ratio > 0.5 and on_battery:
+            q.notes.append(
+                "Sehr starker 50-Hz-Brumm (vor dem Filtern so groß wie das EKG), obwohl der Laptop "
+                "auf Akku lief: Elektroden (frisch, Gel, Haut entfettet) und Kabelführung prüfen – "
+                "und ob ein Monitor, Dock oder Netzwerkkabel am Laptop hing."
+            )
+        elif q.mains_ratio > 0.5:
             q.notes.append(
                 "Sehr starker 50-Hz-Brumm (vor dem Filtern so groß wie das EKG): Elektrodenkontakt "
                 "prüfen – und sicherstellen, dass der Laptop nicht am Netzteil hing."

@@ -87,12 +87,27 @@ def test_cli_export(recording, tmp_path, capsys):
     assert "Schläge" in out and (tmp_path / "a.edf").exists()
 
 
-def test_main_window_with_simulator(tmp_path, recording, qapp):
+def test_cli_record_stores_power_state(tmp_path):
+    from ekg.cli import record_main
+
+    out = tmp_path / "cli.ekgrec"
+    assert record_main(["--simulate", "normal", "--duration", "1", "--out", str(out)]) == 0
+    rec = load_recording(out)
+    assert rec.header["power"]["state"] in {"battery", "external", "no_battery", "unknown"}
+    assert rec.n_samples > 300
+
+
+def test_main_window_with_simulator(tmp_path, recording, qapp, monkeypatch):
     """Oberfläche starten, Simulator in Echtzeit verbinden, aufnehmen, auswerten."""
     import pyqtgraph as pg
 
     from ekg.config import Settings
+    from ekg.gui import main_window
     from ekg.gui.main_window import MainWindow
+    from ekg.power import PowerState, PowerStatus
+
+    power = PowerStatus(PowerState.BATTERY)
+    monkeypatch.setattr(main_window, "power_status", lambda: power)
 
     app = qapp
     pg.setConfigOptions(antialias=True, background="w", foreground="k")
@@ -113,8 +128,13 @@ def test_main_window_with_simulator(tmp_path, recording, qapp):
     assert win.pipeline.heart_rate() is not None
     assert win.hr.value.text() not in ("", "–")
     win.view.grab().save(str(SHOTS / "live.png"))
+    power = PowerStatus(PowerState.EXTERNAL, "AC")  # Ladekabel während der Aufnahme eingesteckt
+    win._check_power()
     win.toggle_recording()
     assert win.last_recording is not None and win.last_recording.exists()
+    saved = load_recording(win.last_recording)
+    assert saved.header["power"]["state"] == "battery"
+    assert [e["state"] for _i, e in saved.events if e.get("type") == "power"] == ["external"]
     win.tabs.setCurrentWidget(win.trends)
     win.trends.refresh()
     win.disconnect_device()

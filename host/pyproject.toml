@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ekg"
-version = "0.2.0"
+version = "0.2.1"
 description = "Desktop-Software für ein 1-Kanal-EKG (AD8232 + Raspberry Pi Pico 2)"
 readme = "README.md"
 requires-python = ">=3.11"
