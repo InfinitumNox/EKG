@@ -115,17 +115,24 @@ def export_main(argv: list[str] | None = None) -> int:
     ap.add_argument("--filter", default="monitor", choices=("monitor", "breit", "roh"))
     args = ap.parse_args(argv)
 
-    from .analysis import analyse
+    from .analysis import analyse, quality_rows
+    from .dsp.beats import interval_rows
     from .dsp.filters import PRESETS
-    from .dsp.hrv import hrv_rows
+    from .dsp.hrv import hrv_rows, segment_rows
     from .storage import export
 
     rec = load_recording(args.recording)
     an = analyse(rec, PRESETS[args.filter][1])
     print(f"{args.recording.name}: {rec.duration_s / 60:.1f} min, {len(an.beats)} Schläge")
-    for k, v in hrv_rows(an.hrv):
-        print(f"  {k:18s} {v}")
-    for h in an.hints:
+    rows = quality_rows(an) + hrv_rows(an.hrv, an.breathing_hz, an.ectopy)
+    seg = segment_rows(an.segments)
+    rows += seg[:1] + [(f"  {k}", v) for k, v in seg[1:]]  # eingerückt unter „5-min-Abschnitte“
+    if an.delineation is not None and an.median is not None:
+        rows += interval_rows(an.delineation, an.median.mean_rr_s, " (exp.)")
+    width = max(len(k) for k, _ in rows)
+    for k, v in rows:
+        print(f"  {k:{width}s}  {v}")
+    for h in an.notes:
         print(f"  Hinweis: {h}")
     if args.edf:
         print("EDF+:", export.export_edf(rec, args.edf, an.r_index))

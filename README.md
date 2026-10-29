@@ -75,16 +75,21 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
 
 - **Live:** Sweep-Darstellung wie am Monitor mit echtem mm-Raster und Eichzacke.
   Dazu Herzfrequenz mit R-Zacken-Markern, eine Ampel für die Signalqualität (mit Begründung) und
-  Warnungen bei Elektrode ab, Laptop am Netzteil, Paketverlust oder unkalibrierter Verstärkung.
+  Warnungen bei Elektrode ab, Übersteuerung, Laptop am Netzteil oder Paketverlust.
 - **Trends:** HF-Verlauf, RR-Tachogramm, Poincaré-Plot, HRV der letzten 5 Minuten.
 - **Auswertung:** Aufzeichnungen öffnen und mit phasenfreien Filtern ansehen.
   Es gibt eine 1:1-Papieransicht, einen Messschieber (ms, /min, mV) und die HRV für den gewählten Ausschnitt.
   Der Median-Schlag wird mit PR, QRS und QT/QTc vermessen (experimentell, Messpunkte eingezeichnet).
+  QTc steht nach Fridericia; Bazett überschätzt bei höherer Herzfrequenz und ist nur ergänzend angegeben.
 - **Export:** EDF+ (z. B. EDFbrowser), WFDB (PhysioNet), CSV und ein PDF-Bericht im Papierformat.
 - **Artefakt-Erkennung:** Extraschläge und Erkennungsfehler werden nach Lipponen & Tarvainen (2019) erkannt.
-  Starke, aber gleichmäßige HF-Schwankungen (Atmung, Kreislauf) gelten dabei als normal.
-- **Atmung:** Die Software schätzt die Atemfrequenz aus der R-Amplitude. Liegt die Atmung im LF-Band, wird LF/HF
-  als nicht deutbar markiert.
+  Starke, aber gleichmäßige HF-Schwankungen (Atmung, Kreislauf) gelten dabei als normal. Als Extraschlag zählt
+  ein Schlag erst, wenn er tatsächlich vorzeitig kommt; die QRS-Form im Vergleich zum Median-Schlag wird mit
+  angegeben. Übersteuerte Abschnitte (Bewegung) werden samt Rand ausgeblendet.
+- **Atmung:** Die Software schätzt die Atemfrequenz aus der R-Amplitude und gibt sie nur an, wenn das RR-Spektrum
+  dieselbe Frequenz zeigt. Liegt die Atmung im LF-Band, wird LF/HF als nicht deutbar markiert.
+- **Signalqualität der Aufnahme:** Der Bericht nennt den 50-Hz-Brumm im ungefilterten Signal. Viel Brumm heißt
+  schlechter Elektrodenkontakt oder eine Verbindung zum Stromnetz.
 - **Kalibrierung (optional):** Wer die mV-Werte genau braucht, misst die Verstärkung über eine Zusatzschaltung.
   Für HF, HRV und Intervalle ist das nicht nötig.
 - **Simulator:** spricht das echte Protokoll. Szenarien: Sinusrhythmus, Extrasystolen, Vorhofflimmern,

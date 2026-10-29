@@ -78,6 +78,11 @@ P-Welle, was für die Rhythmusbeurteilung gut ist:
 Ruhig sitzen oder liegen, die Kabel nicht unter Zug. Zeigt die Software eine **negative** R-Zacke, sind RA und LA
 vertauscht. Die Erkennung funktioniert trotzdem, für vergleichbare Bilder sollte man sie aber tauschen.
 
+Meldet der Bericht **starken 50-Hz-Brumm**, zuerst prüfen, ob das Ladekabel wirklich gezogen ist und nichts mit
+Netzanschluss am Laptop hängt. Danach: frische Elektroden, Haut entfetten, die Kabel nicht neben Netzkabeln oder
+Mehrfachsteckdosen verlegen. Die Filter entfernen den Brumm zwar, er zeigt aber schlechten Kontakt an.
+Bewegung lässt den AD8232 an den Anschlag laufen; solche Abschnitte blendet die Auswertung aus.
+
 ## Phase 2 (später): eigenständig mit Display
 
 - Display ST7789 (320×240, SPI) an SPI0. Pins werden dann in einer eigenen Firmware-Variante festgelegt.

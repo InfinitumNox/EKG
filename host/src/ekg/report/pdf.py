@@ -6,7 +6,6 @@ Koordinaten in Millimetern; das Raster ist damit maßstabsgetreu ausdruckbar
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +13,7 @@ from PySide6.QtCore import QMarginsF, QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetricsF,
     QPageLayout,
     QPageSize,
     QPainter,
@@ -22,7 +22,8 @@ from PySide6.QtGui import (
     QPen,
 )
 
-from ..analysis import Analysis
+from ..analysis import Analysis, quality_rows
+from ..dsp.beats import interval_rows
 from ..dsp.hrv import hrv_rows, segment_rows
 from ..storage.recording import Recording
 
@@ -44,11 +45,27 @@ def _pen(color: QColor, width_mm: float) -> QPen:
     return pen
 
 
-def _font(p: QPainter, size_mm: float, bold: bool = False) -> None:
+def _qfont(size_mm: float, bold: bool = False) -> QFont:
     f = QFont("DejaVu Sans")
     f.setPixelSize(max(1, round(size_mm * 10)))
     f.setBold(bold)
-    p.setFont(f)
+    return f
+
+
+def _font(p: QPainter, size_mm: float, bold: bool = False) -> None:
+    p.setFont(_qfont(size_mm, bold))
+
+
+def _wrap(text: str, size: float, bold: bool, w: float) -> list[str]:
+    """Bricht text an Leerzeichen so um, dass jede Zeile in w mm passt."""
+    fm = QFontMetricsF(_qfont(size, bold))  # Einheit 1/10 mm wie in _text
+    lines: list[str] = []
+    for word in text.split(" "):
+        if lines and fm.horizontalAdvance(f"{lines[-1]} {word}") <= w * 10:
+            lines[-1] += f" {word}"
+        else:
+            lines.append(word)
+    return lines
 
 
 def _text(
@@ -261,24 +278,15 @@ def _summary_page(p: QPainter, rec: Recording, an: Analysis) -> None:
         ("Verstärkung", f"{conv.gain:.0f} ({'gemessen' if conv.gain_calibrated else 'nominal'})"),
         ("Filter (Auswertung)", an.filter_settings.describe() + ", phasenfrei"),
         ("Testsignal", "ja – keine Messung am Menschen" if rec.test_signal else "nein"),
-        ("Lücken / ohne Kontakt", f"{an.gap_s:.1f} s / {an.lead_off_s:.1f} s"),
-        ("", ""),
     ]
-    rows += hrv_rows(an.hrv, an.breathing_hz)
+    rows += quality_rows(an) + [("", "")]
+    rows += hrv_rows(an.hrv, an.breathing_hz, an.ectopy)
     seg = segment_rows(an.segments)
     if seg:
         rows += [("", ""), ("Kurzzeit-HRV", "Median (Spanne) der 5-min-Abschnitte")] + seg
     d = an.delineation
-    if d:
-        rows += [
-            ("", ""),
-            ("PR (exp.)", _fmt(d.pr_ms, "ms")),
-            ("QRS (exp.)", _fmt(d.qrs_ms, "ms")),
-            (
-                "QT / QTc Bazett / Fridericia (exp.)",
-                f"{_fmt(d.qt_ms, 'ms')} / {_fmt(d.qtc_bazett_ms, 'ms')} / {_fmt(d.qtc_fridericia_ms, 'ms')}",
-            ),
-        ]
+    if d and an.median is not None:
+        rows += [("", "")] + interval_rows(d, an.median.mean_rr_s, " (exp.)")
     y = 21.0
     p.setPen(TRACE)
     for k, v in rows:
@@ -286,13 +294,16 @@ def _summary_page(p: QPainter, rec: Recording, an: Analysis) -> None:
             y += 1.6
             continue
         _text(p, MARGIN, y, k, size=2.8, w=62)
-        _text(p, MARGIN + 64, y, v, size=2.8, bold=True, w=78)
+        for i, line in enumerate(_wrap(v, 2.8, True, 76)):
+            y += 3.8 if i else 0.0
+            _text(p, MARGIN + 64, y, line, size=2.8, bold=True, w=78)
         y += 4.6
-    if an.hints:
+    notes = an.notes
+    if notes:
         y += 2
         _text(p, MARGIN, y, "Hinweise (keine Diagnose):", size=2.8, bold=True)
-        for h in an.hints:
-            for i, line in enumerate(textwrap.wrap(h, 88)):
+        for h in notes:
+            for i, line in enumerate(_wrap(h, 2.8, False, 134)):
                 y += 4.6 if i == 0 else 3.8
                 _text(
                     p,
@@ -365,6 +376,8 @@ def _summary_page(p: QPainter, rec: Recording, an: Analysis) -> None:
             p.setPen(_pen(QColor("#dddddd"), 0.12))
             p.drawLine(QPointF(x0, tr.top()), QPointF(x0, tr.bottom()))
             p.setPen(TRACE)
+            if x0 > tr.right() - 7:  # Platz für die Einheit „min“
+                continue
             _text(
                 p,
                 x0 - 5,

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QGridLayout, QLabel, QWidget
 
 from ..dsp.hr import instantaneous_hr, smooth_hr
 from ..dsp.hrv import compute_hrv, hrv_rows, rhythm_hints
-from ..dsp.respiration import breathing_from_amplitude
+from ..dsp.respiration import estimate_breathing
 from ..pipeline import LivePipeline
 from .widgets import InfoPanel
 
@@ -90,7 +90,7 @@ class TrendsWidget(QWidget):
             sel = r_s >= r_s[-1] - HRV_WINDOW_S
             recent = r_s[sel]
             amps = np.array([b.amplitude_mv for b in beats])[sel]
-            breathing = breathing_from_amplitude(recent, np.abs(amps))
+            breathing = estimate_breathing(recent, np.abs(amps))
             self.hrv.set_rows(hrv_rows(compute_hrv(recent), breathing))
             hints = rhythm_hints(recent)
             self.hints.setText(

@@ -211,3 +211,24 @@ def _p_wave(
     if j - w <= lo:
         return None, peak, amp * sign
     return j, peak, amp * sign
+
+
+def interval_rows(d: Delineation, mean_rr_s: float, suffix: str = "") -> list[tuple[str, str]]:
+    """Intervall-Zeilen für Oberfläche und Bericht.
+
+    QTc nach Fridericia steht vorn: Bazett überkorrigiert bei höherer Herzfrequenz
+    deutlich (bei 95/min um rund 30 ms) und gilt dort als unzuverlässig.
+    """
+
+    def fmt(v: float | None) -> str:
+        return "–" if v is None or not np.isfinite(v) else f"{v:.0f} ms"
+
+    hr = 60.0 / mean_rr_s if mean_rr_s > 0 else 0.0
+    bazett_note = " (überschätzt, HF > 80/min)" if hr > 80 and d.qtc_bazett_ms else ""
+    return [
+        (f"PR{suffix}", fmt(d.pr_ms)),
+        (f"QRS{suffix}", fmt(d.qrs_ms)),
+        (f"QT{suffix}", fmt(d.qt_ms)),
+        (f"QTc Fridericia{suffix}", fmt(d.qtc_fridericia_ms)),
+        (f"QTc Bazett{suffix}", fmt(d.qtc_bazett_ms) + bazett_note),
+    ]

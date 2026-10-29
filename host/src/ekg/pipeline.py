@@ -201,11 +201,13 @@ class LivePipeline:
         self.flags.append(np.full(n, flags & 0xFF, dtype=np.uint8))
         self._last_mv = float(mv[-1])
 
-        if lead_off or self._detector_next is None or self._detector_next != start:
-            # Nach Kontaktverlust neu lernen lassen.
+        # Bei Übersteuerung (Bewegung) erzeugt die Erkennung Phantom-Schläge: wie Lead-off behandeln.
+        unusable = lead_off or bool(flags & Flag.CLIP)
+        if unusable or self._detector_next is None or self._detector_next != start:
+            # Nach Kontaktverlust oder Übersteuerung neu lernen lassen.
             self.detector.reset(start + n)
             self._detector_next = start + n
-            if lead_off:
+            if unusable:
                 self.hr.reset()
         else:
             for beat in self.detector.process(mv, start):

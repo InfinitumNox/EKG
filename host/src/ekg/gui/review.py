@@ -22,8 +22,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..analysis import Analysis, analyse
+from ..analysis import Analysis, analyse, quality_rows
 from ..config import Settings, recordings_dir
+from ..dsp.beats import interval_rows
 from ..dsp.filters import PRESETS
 from ..dsp.hrv import hrv_rows, segment_rows
 from ..storage import export
@@ -286,15 +287,14 @@ class ReviewWidget(QWidget):
                 "Verstärkung",
                 f"{conv.gain:.0f} ({'gemessen' if conv.gain_calibrated else 'nominal'})",
             ),
-            ("Lücken / ohne Kontakt", f"{an.gap_s:.1f} s / {an.lead_off_s:.1f} s"),
-        ]
+        ] + quality_rows(an)
         if rec.test_signal:
             rows.insert(0, ("Quelle", "<span style='color:#b71c1c'>Testsignal</span>"))
         seg = segment_rows(an.segments)
         if seg:
             seg = [("<i>Kurzzeit-HRV</i>", "<i>Median (Spanne) je 5 min</i>")] + seg
-        self.summary.set_rows(rows + hrv_rows(an.hrv, an.breathing_hz) + seg)
-        hints = an.hints
+        self.summary.set_rows(rows + hrv_rows(an.hrv, an.breathing_hz, an.ectopy) + seg)
+        hints = an.notes
         self.hints.setText(
             "<b>Hinweise</b> (keine Diagnose):<br>" + "<br>".join(f"• {h}" for h in hints)
             if hints
@@ -338,11 +338,7 @@ class ReviewWidget(QWidget):
                     )
             self.intervals.set_rows(
                 [
-                    ("PR", _fmt(d.pr_ms, "ms")),
-                    ("QRS", _fmt(d.qrs_ms, "ms")),
-                    ("QT", _fmt(d.qt_ms, "ms")),
-                    ("QTc Bazett", _fmt(d.qtc_bazett_ms, "ms")),
-                    ("QTc Fridericia", _fmt(d.qtc_fridericia_ms, "ms")),
+                    *interval_rows(d, mb.mean_rr_s),
                     ("R / T", f"{d.r_amp_mv:.2f} / {_fmt(d.t_amp_mv, 'mV', 2)}"),
                     ("Schläge im Median", str(mb.n_beats)),
                 ]

@@ -353,3 +353,21 @@ die HF aller 1976 Schläge.
 
 Als Regressionstest ist ein Simulator-Szenario „Ruhe“ mit diesen Eigenschaften hinzugekommen
 (`host/tests/test_realistic.py`). Die echten Daten liegen nicht im Repository.
+
+## 15. Erkenntnisse aus den ersten Rohaufnahmen (28./29.10.2026)
+
+Ausgewertet wurden drei `.ekgrec`-Dateien (30 min, 7 min, 41 s), diesmal die Rohwerte statt des Berichts.
+Alle drei sind lückenlos und ohne Lead-off. In den beiden längeren Aufnahmen weicht die Abtastrate höchstens
+60 ppm von der Laptop-Uhr ab.
+
+| Befund | Ursache | Änderung |
+|---|---|---|
+| HF-Spitze ~210/min und ein „verpasster Schlag“ in der 30-min-Aufnahme | Bewegung trieb den AD8232 an den Anschlag; im übersteuerten Abschnitt fand der Detektor Phantom-Schläge | Übersteuerte Samples (≤ 1 % vom Anschlag oder CLIP-Flag) werden samt 0,5 s Rand ausgeblendet, ebenso Lead-off und Lücken. RR-Intervalle über ausgeblendete Stellen zählen nicht. Live setzt CLIP die Erkennung zurück wie Lead-off. |
+| 2 „vorzeitige“ Schläge in der 7-min-Aufnahme | Abrupte Verlangsamung (718 → 1090 ms, danach langsame Erholung) bzw. ein Sprung knapp über der Schwelle. Die RR-Klassifikation sieht nur Abstände. In der T-Welle vor der Pause ist keine versteckte P-Welle zu sehen. | Extraschläge zählen nur, wenn der Schlag tatsächlich vorzeitig kommt (< 85 % des lokalen Medians); die QRS-Korrelation mit dem Median-Schlag trennt normale und veränderte Form (`ekg/dsp/ectopy.py`). Der Rest heißt „RR-Sprung ohne Extraschlag“. |
+| Atemschätzung aus der R-Amplitude unsicher: stärkstes Maximum je 2-min-Fenster zwischen 0,16 und 0,38 Hz | Die R-Amplitude hängt nicht nur von der Atmung ab (u. a. Kontakt, Körperlage); welche Spitze die Atmung ist, lässt sich aus ihr allein nicht sagen | Atemfrequenz wird nur angegeben, wenn Amplituden- und RR-Spektrum in 120-s-Fenstern übereinstimmen (±0,02 Hz) |
+| QTc Bazett 460–482 ms bei 91–94/min (Fridericia 428–450 ms) | Bazett überkorrigiert oberhalb ~80/min deutlich | Fridericia steht vorn; Bazett trägt bei HF > 80/min den Hinweis „überschätzt“ |
+| Netzbrumm vor dem Filter 147–212 µV eff., mindestens so stark wie das EKG (kurze Aufnahmen) bzw. 25 µV (30 min) | Elektrodenkontakt oder Verbindung zum Stromnetz; die Filter entfernen ihn vollständig, daher war er unsichtbar | Bericht und Auswertung nennen den Brumm-Anteil und geben ab 10 % bzw. 50 % der EKG-Leistung einen Hinweis |
+| PR = 250 ms in allen drei Aufnahmen mit der alten Version | Fehler aus Abschnitt 14 | mit der aktuellen Version 162–180 ms |
+| Kopfzeile „ekg 0.1.0“ trotz geänderter Auswertung | Versionsnummer nicht erhöht | 0.2.0 |
+
+Regressionstests: `host/tests/test_recording_quality.py`. Die echten Daten liegen nicht im Repository.

@@ -16,6 +16,7 @@ import numpy as np
 from scipy import signal
 
 from .artifacts import RrClassification, classify_rr
+from .ectopy import Ectopy
 
 VLF = (0.0033, 0.04)
 LF = (0.04, 0.15)
@@ -54,10 +55,31 @@ class HrvResult:
         return self.duration_s < 300
 
 
-def nn_mask(rr_s: np.ndarray) -> tuple[np.ndarray, RrClassification]:
-    """Gültige NN-Intervalle: physiologisch möglich und nicht als Artefakt klassifiziert."""
+Intervals = list[tuple[float, float]]
+SHORT_S = 120.0  # darunter sind SDNN, RMSSD & Co. nur grob
+
+
+def rr_overlap_mask(t: np.ndarray, invalid: Intervals | None) -> np.ndarray:
+    """True für RR-Intervalle, die einen ungültigen Abschnitt (Übersteuerung, Lead-off) berühren."""
+    t = np.asarray(t, dtype=np.float64)
+    bad = np.zeros(max(0, len(t) - 1), dtype=bool)
+    if not invalid or len(t) < 2:
+        return bad
+    a, b = t[:-1], t[1:]
+    for s0, e0 in invalid:
+        bad |= (a < e0) & (b > s0)
+    return bad
+
+
+def nn_mask(rr_s: np.ndarray, bad: np.ndarray | None = None) -> tuple[np.ndarray, RrClassification]:
+    """Gültige NN-Intervalle: physiologisch möglich und nicht als Artefakt klassifiziert.
+
+    bad: zusätzlich auszuschließende Intervalle (z. B. über einen übersteuerten Abschnitt).
+    """
     rr = np.asarray(rr_s, dtype=np.float64)
     hard = (rr >= RR_MIN_S) & (rr <= RR_MAX_S)
+    if bad is not None:
+        hard &= ~bad
     filled = rr.copy()
     if hard.any():
         filled[~hard] = np.median(rr[hard])  # damit Lücken die Schwellen nicht verzerren
@@ -65,12 +87,12 @@ def nn_mask(rr_s: np.ndarray) -> tuple[np.ndarray, RrClassification]:
     return hard & cls.valid_mask(), cls
 
 
-def compute_hrv(r_times_s: np.ndarray) -> HrvResult | None:
+def compute_hrv(r_times_s: np.ndarray, invalid: Intervals | None = None) -> HrvResult | None:
     t = np.asarray(r_times_s, dtype=np.float64)
     if len(t) < 10:
         return None
     rr_s = np.diff(t)
-    ok, cls = nn_mask(rr_s)
+    ok, cls = nn_mask(rr_s, rr_overlap_mask(t, invalid))
     rr = rr_s * 1000.0
     t_rr = t[1:]
     rr_ok = rr[ok]
@@ -123,7 +145,10 @@ def compute_hrv(r_times_s: np.ndarray) -> HrvResult | None:
 
 
 def segment_hrv(
-    r_times_s: np.ndarray, seg_s: float = 300.0, min_cover: float = 0.8
+    r_times_s: np.ndarray,
+    seg_s: float = 300.0,
+    min_cover: float = 0.8,
+    invalid: Intervals | None = None,
 ) -> list[HrvResult]:
     """Kurzzeit-HRV je 5-min-Abschnitt (Task-Force-Standard für Vergleiche)."""
     t = np.asarray(r_times_s, dtype=np.float64)
@@ -133,7 +158,7 @@ def segment_hrv(
     start = t[0]
     while start + seg_s <= t[-1] + 1e-9:
         sel = t[(t >= start) & (t < start + seg_s)]
-        h = compute_hrv(sel)
+        h = compute_hrv(sel, invalid)
         if (
             h is not None
             and h.mean_rr_ms * (h.n_beats - 1 - h.n_excluded) / 1000.0 >= min_cover * seg_s
@@ -196,7 +221,9 @@ class Irregularity:
         return self.irregular_windows / self.windows if self.windows else 0.0
 
 
-def irregularity(rr_s: np.ndarray, window: int = 64) -> Irregularity | None:
+def irregularity(
+    rr_s: np.ndarray, window: int = 64, bad: np.ndarray | None = None
+) -> Irregularity | None:
     """Zufällige Unregelmäßigkeit (Muster wie bei Vorhofflimmern) in Fenstern zu 64 Schlägen.
 
     Ein Fenster gilt als unregelmäßig, wenn die Schwankung groß (nRMSSD > 0,08), ohne
@@ -206,7 +233,7 @@ def irregularity(rr_s: np.ndarray, window: int = 64) -> Irregularity | None:
     zufälliger Unregelmäßigkeit bleibt danach genug Unregelmäßigkeit übrig.
     """
     rr = np.asarray(rr_s, dtype=np.float64)
-    keep, _ = nn_mask(rr)
+    keep, _ = nn_mask(rr, bad)
     x = rr[keep]
     if len(x) < window:
         return None
@@ -229,13 +256,20 @@ def irregularity(rr_s: np.ndarray, window: int = 64) -> Irregularity | None:
     return Irregularity(n_win, n_irr, float(med[0]), float(med[1]), float(med[2]))
 
 
-def rhythm_hints(r_times_s: np.ndarray) -> list[str]:
-    """Einfache Hinweise, ausdrücklich keine Diagnose."""
+def rhythm_hints(
+    r_times_s: np.ndarray, invalid: Intervals | None = None, ectopy: Ectopy | None = None
+) -> list[str]:
+    """Einfache Hinweise, ausdrücklich keine Diagnose.
+
+    invalid: unbrauchbare Abschnitte; ectopy: per QRS-Form bestätigte Extraschläge (ohne
+    Angabe zählen die RR-Muster allein, z. B. live ohne Kurvenform).
+    """
     t = np.asarray(r_times_s, dtype=np.float64)
     if len(t) < 20:
         return []
     rr = np.diff(t)
-    hard = (rr >= RR_MIN_S) & (rr <= RR_MAX_S)
+    bad = rr_overlap_mask(t, invalid)
+    hard = (rr >= RR_MIN_S) & (rr <= RR_MAX_S) & ~bad
     if hard.sum() < 15:
         return []
     hints = []
@@ -245,8 +279,8 @@ def rhythm_hints(r_times_s: np.ndarray) -> list[str]:
     elif hr > 100:
         hints.append(f"Herzfrequenz hoch ({hr:.0f}/min)")
 
-    ok, cls = nn_mask(rr)
-    irr = irregularity(rr)
+    ok, cls = nn_mask(rr, bad)
+    irr = irregularity(rr, bad=bad)
     if irr is not None and irr.fraction >= 0.5:
         hints.append(
             "Rhythmus über weite Strecken zufällig unregelmäßig – bei wiederholtem Befund ärztlich abklären"
@@ -255,9 +289,12 @@ def rhythm_hints(r_times_s: np.ndarray) -> list[str]:
         hints.append("Rhythmus zeitweise zufällig unregelmäßig")
     mostly_irregular = irr is not None and irr.fraction >= 0.5
     # Mindestens 3 und 1 % der Schläge (oder 10): einzelne Treffer sind oft Messrauschen.
-    n_ect = len(cls.ectopic)
+    n_ect = ectopy.count if ectopy is not None else len(cls.ectopic)
     if not mostly_irregular and n_ect >= 3 and (n_ect >= 10 or n_ect >= 0.01 * len(rr)):
-        hints.append(f"{n_ect} vorzeitige Schläge mit nachfolgender Pause")
+        text = f"{n_ect} vorzeitige Schläge mit nachfolgender Pause"
+        if ectopy is not None and ectopy.other_qrs:
+            text += f", davon {len(ectopy.other_qrs)} mit veränderter QRS-Form"
+        hints.append(text)
     n_err = len(cls.missed) + len(cls.extra)
     if n_err >= 3:
         hints.append(
@@ -279,21 +316,33 @@ def _per_min(hz: float | None) -> str:
     return "–" if hz is None else f"{hz * 60:.0f} /min ({hz:.2f} Hz)"
 
 
-def hrv_rows(h: HrvResult | None, breathing_hz: float | None = None) -> list[tuple[str, str]]:
+def hrv_rows(
+    h: HrvResult | None, breathing_hz: float | None = None, ectopy: Ectopy | None = None
+) -> list[tuple[str, str]]:
     """Zeilen für Tabellen in Oberfläche und Bericht.
 
-    breathing_hz: Atemfrequenz aus der QRS-Amplitude (ekg.dsp.respiration), falls bekannt.
+    breathing_hz: Atemfrequenz (ekg.dsp.respiration), falls belastbar bestimmt.
+    ectopy: per QRS-Form bestätigte Extraschläge (Auswertung); sonst zählen RR-Muster.
     """
     if h is None:
         return [("HRV", "zu wenige Schläge")]
     detail = []
-    if h.n_ectopic:
+    if ectopy is not None:
+        if ectopy.count:
+            detail.append(f"{ectopy.count} vorzeitig")
+        if ectopy.not_premature:
+            # RR-Muster wie bei einem Extraschlag, aber kein Schlag kam zu früh (z. B. abrupte
+            # Verlangsamung oder knapp über der Schwelle).
+            detail.append(f"{len(ectopy.not_premature)} RR-Sprung ohne Extraschlag")
+    elif h.n_ectopic:
         detail.append(f"{h.n_ectopic} vorzeitig")
     if h.n_missed or h.n_extra:
         detail.append(f"{h.n_missed + h.n_extra} Erkennungsfehler")
     excl = f"{h.n_excluded} verworfen" + (f": {', '.join(detail)}" if detail else "")
-    rows = [
-        ("Schläge", f"{h.n_beats} ({excl})"),
+    rows = [("Schläge", f"{h.n_beats} ({excl})")]
+    if h.duration_s < SHORT_S:
+        rows.append(("Aussagekraft HRV", "gering – Aufnahme kürzer als 2 min"))
+    rows += [
         ("HF Ø / min / max", f"{h.mean_hr:.0f} / {h.min_hr:.0f} / {h.max_hr:.0f} /min"),
         ("SDNN", f"{h.sdnn_ms:.0f} ms"),
         ("RMSSD", f"{h.rmssd_ms:.0f} ms"),
