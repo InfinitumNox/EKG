@@ -370,6 +370,7 @@ Alle drei sind lückenlos und ohne Lead-off. In den beiden längeren Aufnahmen w
 | PR = 250 ms in allen drei Aufnahmen mit der alten Version | Fehler aus Abschnitt 14 | mit der aktuellen Version 162–180 ms |
 | Kopfzeile „ekg 0.1.0“ trotz geänderter Auswertung | Versionsnummer nicht erhöht | 0.2.0 |
 | Brumm stieg von Aufnahme zu Aufnahme (147 → 212 → 406 µV eff.), Ursache im Nachhinein nicht klärbar | Die Aufnahme enthielt nicht, ob der Laptop am Netzteil hing; die Warnung gab es nur live | Stromversorgung im Kopf der Aufnahme, jeder Wechsel als Ereignis; Bericht zeigt sie an und passt den Brumm-Hinweis an (0.2.1) |
+| Live-Ampel meldete bei sauberem Signal in 20–68 % der Fenster „Signal verrauscht“ / „Schlagform wechselnd“ (eine Person) | Kleine R-Zacke, große P- und T-Welle senken die Kurtosis des Anzeigesignals; Atmung und Grundlinie senken die Formkorrelation | Kurtosis im QRS-Band 5–15 Hz, Formvergleich nach Entfernen der Neigung je Schlag; Schwellen unverändert. Fehlalarme jetzt 0–8 %, reines Rauschen weiter „kein EKG-typisches Signal“; langsame Bewegungsartefakte werden in etwas weniger Fenstern erkannt (54–69 % statt ~70 %) |
 | PR-Strecke 0,10–0,14 mV unter der TP-Strecke (eine Person, alle Aufnahmen) | Kein Filtereffekt: gleicher Wert mit 0,5 Hz, 0,05 Hz und ohne digitalen Hochpass; wächst mit der P-Welle (Vorhof-Repolarisation) | P-Amplitude wird ab P-Beginn gemessen (siehe oben); Strecken werden weiterhin nicht bewertet (Bandbreite) |
 
 Regressionstests: `host/tests/test_recording_quality.py`. Die echten Daten liegen nicht im Repository.

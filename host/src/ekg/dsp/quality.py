@@ -4,9 +4,14 @@ Kriterien (jeweils auf den letzten Sekunden):
 - Elektrodenkontakt (Lead-off-Flags des AD8232)
 - Übersteuerung (ADC am Anschlag)
 - R-Zacken vorhanden und ausreichend groß
-- Konstanz der Schlagform (Korrelation mit dem Median-Schlag)
-- Kurtosis (kSQI): EKG ist spitz verteilt, Rauschen nicht
+- Konstanz der Schlagform (Korrelation mit dem Median-Schlag, ohne Grundlinien-Neigung)
+- Kurtosis (kSQI) im QRS-Band 5–15 Hz: EKG ist dort spitz verteilt, Rauschen nicht
 - Anteil 50-Hz-Brumm (wird zwar weggefiltert, zeigt aber schlechten Kontakt an)
+
+Kurtosis und Formvergleich auf dem Anzeigesignal hielten eine saubere reale Messung mit
+kleiner R-Zacke und großen P-/T-Wellen in bis zu zwei Dritteln der Fenster für gestört:
+P und T senken die Kurtosis, Atmung und Grundlinie die Korrelation. Im QRS-Band und nach
+Entfernen der Neigung je Schlag fällt das weg; reines Rauschen bleibt bei Kurtosis ~3.
 """
 
 from __future__ import annotations
@@ -18,6 +23,8 @@ import numpy as np
 from scipy import signal, stats
 
 from ..protocol import Flag
+
+QRS_BAND_HZ = (5.0, 15.0)
 
 
 class Level(IntEnum):
@@ -84,7 +91,9 @@ def assess(
         rep.worsen(Level.POOR, "zu wenig Daten")
         return rep
 
-    rep.kurtosis = float(stats.kurtosis(x, fisher=False))
+    sos = signal.butter(2, QRS_BAND_HZ, btype="band", fs=fs, output="sos")
+    qrs_band = signal.sosfilt(sos, x - x[0])[int(0.5 * fs) :]  # ohne Einschwingen
+    rep.kurtosis = float(stats.kurtosis(qrs_band, fisher=False))
     if rep.kurtosis < 3.5:
         rep.worsen(Level.POOR, "kein EKG-typisches Signal")
     elif rep.kurtosis < 5.0:
@@ -119,7 +128,7 @@ def assess(
         for b in beat_offsets
         if int(b) - pre >= 0 and int(b) + post <= n
     ]
-    segs = [s for s in segs if np.all(np.isfinite(s))]
+    segs = [signal.detrend(s) for s in segs if np.all(np.isfinite(s))]
     if len(segs) >= 3:
         m = np.vstack(segs)
         tmpl = np.median(m, axis=0)

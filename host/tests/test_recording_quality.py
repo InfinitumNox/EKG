@@ -11,10 +11,12 @@ Eigenschaften, die Fehler ausgelöst haben:
 - QTc nach Bazett lag bei 95/min rund 30 ms über Fridericia.
 """
 
+from collections import Counter
 from dataclasses import replace
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from ekg import protocol as P
 from ekg.analysis import analyse, quality_rows
@@ -25,6 +27,7 @@ from ekg.dsp.ectopy import confirm_ectopics
 from ekg.dsp.filters import PRESETS, zero_phase
 from ekg.dsp.hrv import compute_hrv, hrv_rows, nn_mask, rhythm_hints
 from ekg.dsp.qrs import detect_qrs
+from ekg.dsp.quality import Level
 from ekg.dsp.respiration import estimate_breathing, qrs_amplitudes
 from ekg.dsp.signal_quality import assess_recording, invalid_mask, mask_intervals
 from ekg.pipeline import LivePipeline
@@ -254,3 +257,64 @@ def test_interval_rows_prefer_fridericia():
     assert values["QTc Bazett"] == "462 ms (überschätzt, HF > 80/min)"
     slow = dict(interval_rows(d, 1.0, " (exp.)"))
     assert slow["QTc Bazett (exp.)"] == "462 ms"  # Hinweis nur bei hoher Herzfrequenz
+
+
+# Schlagform wie in der Aufnahme vom 29.10. 07:28: kleine R-Zacke, tiefe S-Zacke, große P- und
+# T-Welle. Kurtosis und Formvergleich auf dem Anzeigesignal meldeten dort in bis zu 2/3 der
+# Fenster „Signal verrauscht“ bzw. „Schlagform wechselnd“, obwohl das Signal sauber war.
+LOW_R_WAVES = (
+    (-0.180, 0.20, 0.025, False),  # P
+    (-0.090, -0.05, 0.030, False),  # Ta
+    (-0.020, -0.04, 0.008, False),  # Q
+    (0.000, 0.55, 0.010, False),  # R
+    (0.025, -0.38, 0.011, False),  # S
+    (0.270, 0.27, 0.060, True),  # T
+)
+
+
+def live_quality(mv: np.ndarray) -> tuple[Counter, Counter, list[float]]:
+    """Signal wie vom Gerät durch die Live-Pipeline; Ampel alle 0,5 s (nach 6 s Anlauf)."""
+    conv = Conversion(oversampling=64)
+    raw = conv.mv_to_raw(mv)
+    pl = LivePipeline(FS, conv)
+    levels, reasons, old_kurtosis = Counter(), Counter(), []
+    for k, i in enumerate(range(0, len(raw) - 25, 25)):
+        pl.push(P.SamplesPacket(k, i, P.Flag(0), raw[i : i + 25]))
+        if i % (FS // 2) == 0 and i > 6 * FS:
+            pl._update_quality()
+            levels[pl.quality.level] += 1
+            reasons.update(pl.quality.reasons)
+            x = pl.display.get(pl.display.end - 4 * FS, pl.display.end)
+            old_kurtosis.append(float(stats.kurtosis(x, fisher=False)))
+    return levels, reasons, old_kurtosis
+
+
+def test_live_quality_accepts_small_r_wave():
+    g = SyntheticEcg(FS, hr_bpm=80, seed=2, amp_mod=0.1, waves=LOW_R_WAVES)
+    levels, reasons, old_k = live_quality(g.generate(FS * 60))
+    assert np.mean(np.array(old_k) < 5) > 0.3  # frühere Kennzahl: oft „verrauscht“
+    assert levels[Level.GOOD] >= 0.9 * sum(levels.values()), reasons
+    assert not reasons["Signal verrauscht"] and not reasons["kein EKG-typisches Signal"]
+
+
+def test_live_quality_names_mains_hum_as_the_only_problem():
+    g = SyntheticEcg(FS, hr_bpm=80, seed=2, amp_mod=0.1, mains_mv=0.57, waves=LOW_R_WAVES)
+    levels, reasons, _ = live_quality(g.generate(FS * 60))  # wie 07:28: 406 µV eff.
+    n = sum(levels.values())
+    assert levels[Level.POOR] == n
+    assert reasons["starker 50-Hz-Brumm – Kontakt/Kabelführung prüfen"] == n
+    assert sum(reasons.values()) <= 1.1 * n  # kaum andere Gründe
+
+
+def test_live_quality_still_flags_noise_and_motion():
+    rng = np.random.default_rng(0)
+    levels, reasons, _ = live_quality(0.05 * rng.normal(size=FS * 30))
+    assert levels[Level.POOR] == sum(levels.values())
+    assert reasons["kein EKG-typisches Signal"] >= 0.9 * sum(levels.values())
+
+    mv = SyntheticEcg(FS, hr_bpm=70, seed=6).generate(FS * 40)
+    t = np.arange(len(mv)) / FS
+    sel = (t >= 20) & (t < 23)  # Bewegung: langsame Schwingung plus Zittern
+    mv[sel] += 0.6 * np.sin(2 * np.pi * 2.5 * (t[sel] - 20)) + 0.15 * rng.normal(size=sel.sum())
+    levels, reasons, _ = live_quality(mv)
+    assert reasons["Schlagform wechselnd"] + reasons["Schlagform instabil – Artefakte"] >= 5

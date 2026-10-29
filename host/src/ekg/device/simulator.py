@@ -91,6 +91,7 @@ class SyntheticEcg:
     mayer: float = 0.0  # relative RR-Schwankung bei ~0,1 Hz (Blutdruckregulation)
     amp_mod: float = 0.0  # relative QRS-Amplitudenschwankung mit der Atmung
     jitter: float = 0.015
+    waves: tuple[Wave, ...] | None = None  # eigene Schlagform statt der des Szenarios
     r_times: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -104,6 +105,8 @@ class SyntheticEcg:
             self.hr_bpm, self.resp_hz, self.rsa, self.mayer = 66.0, 0.18, 0.07, 0.13
             self.amp_mod, self.jitter = 0.08, 0.01
             self._waves = _REST_WAVES
+        if self.waves is not None:
+            self._waves = self.waves
         self._rng = np.random.default_rng(self.seed)
         self._n = 0
         rr0 = 60.0 / self.hr_bpm
