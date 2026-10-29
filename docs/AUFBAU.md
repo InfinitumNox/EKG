@@ -145,9 +145,58 @@ Erster Test nach dem Anschluss: die drei Elektroden-Druckknöpfe auf ein Stück 
 geschlossen) und je eine Minute mit laufendem und mit ausgeschaltetem Display aufnehmen. Das Rauschen darf sich
 nicht sichtbar ändern.
 
+### Display: Bedienung
+
+Nach dem Einschalten zeigt das Display gut 3 s den Startbildschirm „SophiEKG“, danach die laufende Kurve.
+Herzfrequenz und Signalstatus rechnet der Pico selbst, mit derselben QRS-Erkennung wie der Laptop. Dafür muss
+kein Laptop angeschlossen sein. Ist einer angeschlossen, laufen Aufnahme und Anzeige wie bisher parallel.
+
+| Geste | Wirkung |
+|---|---|
+| kurz tippen | Helligkeit 100 % → 50 % → 20 % |
+| 2 s halten | Bild um 180° drehen |
+
+Beide Einstellungen bleiben nach dem Ausschalten erhalten. Solange das Laptop-Programm Daten empfängt,
+speichert der Pico erst danach, denn das Schreiben in den Flash hält die Erfassung kurz an.
+
+Oben rechts steht **Laptop**, solange das Laptop-Programm Daten empfängt, sonst **USB**, wenn nur das
+Kabel steckt, und **TEST** beim Testsignal. Wird das Laptop-Programm geschlossen, schaltet der Pico vom
+Testsignal zurück auf die Elektroden. Unten stehen Herzfrequenz, Signalstatus und das letzte RR-Intervall. Die Eichzacke
+links ist 1 mV hoch, bei großer Verstärkung 0,5 mV. Die Verstärkung passt sich der R-Zacke an und wechselt
+nur, wenn die Kurve am linken Rand neu beginnt.
+
+| Bild | Ursache |
+|---|---|
+| weiß, es passiert nichts | CS, DC, RESET, SCK oder SDI vertauscht oder lose |
+| bleibt dunkel | LED (GP5) oder VCC |
+| Rot und Blau vertauscht, gespiegelt oder verzerrt | bitte melden: anderer Controller als ILI9341 |
+| Tippen wirkt nicht | T_IRQ (GP14) |
+
+`cat /dev/ttyACM1` zeigt beim Verbinden die Zeile „Display: Kennung 0x9341 (ILI9341)“. Steht dort
+„liest nicht zurück“, fehlt meist nur SDO (GP4); das Bild kann trotzdem funktionieren.
+
+### Stromversorgung ohne Laptop: Batteriebox 3×AA
+
+Auf VSYS steckt schon das Display. Deshalb führt eine 3er-Wago drei Leitungen zusammen.
+
+| Batteriebox | Verbindung |
+|---|---|
+| Plus (rot) | 3er-Wago, zusammen mit Display-VCC (lila) und einem kurzen Buchse-Kabel zu **VSYS** |
+| Minus (schwarz) | 2er-Wago mit einem halbierten Buchse-Kabel zu **GND** (Pin 38, zwischen 3V3_EN und VSYS) |
+
+- **Batteriebox ausschalten, sobald USB steckt.** Ohne Diode speist USB sonst über VSYS in die Batterien;
+  Alkali-Zellen können dabei auslaufen. Mit Laptop also Box aus, ohne Laptop Box an.
+- Vor dem ersten Einschalten die Polarität prüfen: Rot muss an VSYS. Verpolt zerstören −4,5 V den Pico.
+- Nur normale Alkali-Batterien, alle drei gleich alt.
+- Laufzeit grob 15–20 h bei voller Helligkeit: Pico und AD8232 brauchen etwa 25 mA, das Display 60–90 mA.
+  Mit 20 % Helligkeit hält es deutlich länger.
+- Der Pico regelt VSYS selbst auf 3,3 V (bis etwa 1,8 V hinunter), der AD8232 hängt an diesen 3,3 V. Das EKG
+  bleibt deshalb sauber, bis die Batterien fast leer sind. Wird das Display dunkler oder flackert es,
+  Batterien tauschen.
+
+Batteriebetrieb ist die sicherste Art zu messen, denn dabei gibt es keine Verbindung zum Stromnetz.
+
 ### Weitere Schritte
 
-- LiPo-Akku mit Laderegler (z. B. MCP73831) an VSYS und ein eigener rauscharmer LDO für den AD8232.
 - SD-Karte (SPI) im selben Rohformat wie die Laptop-Aufnahmen.
-- Die Signalverarbeitung wird nach C portiert und gegen die Python-Implementierung mit identischen
-  Eingabedaten geprüft.
+- Später: LiPo-Akku mit Laderegler (z. B. MCP73831) und ein eigener rauscharmer LDO für den AD8232.

@@ -236,7 +236,7 @@ Das Pico SDK und picotool holt das CMake-Projekt selbst (`PICO_SDK_FETCH_FROM_GI
 
 ### 6.3 Vorbereitung für Phase 2
 
-Die Echtzeit-Kette ist bewusst einfach gehalten (IIR plus Pan-Tompkins), damit sie sich nach C für den Pico portieren lässt. Gegen die Python-Implementierung wird mit **Golden Vectors** getestet: gleiche Eingabe, identische Detektionen.
+Die Echtzeit-Kette ist bewusst einfach gehalten (IIR plus Pan-Tompkins), damit sie sich nach C für den Pico portieren lässt. Gegen die Python-Implementierung wird mit **Golden Vectors** getestet: gleiche Eingabe, identische Detektionen. Umgesetzt in `host/tests/test_firmware_ecg.py`.
 
 ---
 
@@ -286,10 +286,15 @@ Die Schaltung steht in [docs/KALIBRIERUNG.md](docs/KALIBRIERUNG.md). **Währendd
 
 ### Phase 2 im Überblick (M6)
 
-- Display: vorhanden ist ein 2,8″-TFT 240×320 mit ILI9341, Touch (XPT2046) und SD-Steckplatz. Anschluss in
-  [docs/AUFBAU.md](docs/AUFBAU.md) und [docs/verdrahtung.svg](docs/verdrahtung.svg). Ein voller
-  Framebuffer bräuchte 150 KB (der RP2350 hat 520 KB RAM); für die Sweep-Kurve genügen Teilaktualisierungen.
-- Akku: LiPo mit Laderegler (z. B. MCP73831) und einem **rauscharmen LDO für den Analogteil**.
+- Display (umgesetzt in 0.3.0): 2,8″-TFT 240×320 mit ILI9341, Touch (XPT2046) und SD-Steckplatz. Anschluss in
+  [docs/AUFBAU.md](docs/AUFBAU.md) und [docs/verdrahtung.svg](docs/verdrahtung.svg). Kern 1 zeichnet in einen
+  vollen Framebuffer (150 KB von 520 KB RAM) und überträgt nur geänderte Bereiche. Kern 0 erfasst weiter und
+  bedient USB; die Erfassung läuft jetzt ab dem Einschalten, USB-Pakete gibt es erst nach START.
+- DSP in C (umgesetzt): Pan-Tompkins und HF-Median als zeilengetreuer Port von `ekg.dsp`, Koeffizienten aus
+  `tools/gen_ecg_tables.py`. `host/tests/test_firmware_ecg.py` vergleicht C und Python blockweise
+  (Schlagindex auf 1e-6, Amplitude auf 1e-9 genau).
+- Stromversorgung: vorerst 3×AA an VSYS (AUFBAU.md). Später LiPo mit Laderegler (z. B. MCP73831) und einem
+  **rauscharmen LDO für den Analogteil**.
 - SD-Karte (SPI) speichert im selben Rohformat wie der Host-Recorder, damit die Review-Software es direkt öffnen kann.
 - Gehäuse und Zugentlastung fürs Kabel.
 
@@ -300,7 +305,7 @@ Die Schaltung steht in [docs/KALIBRIERUNG.md](docs/KALIBRIERUNG.md). **Währendd
 ```
 firmware/   CMake-Projekt (Pico SDK), src/, tests/ (Host-kompiliert)
 host/       pyproject.toml, src/ekg/…, tests/
-tools/      mitbih_benchmark.py, freqresp.py, calibrate.py
+tools/      mitbih_benchmark.py, freqresp.py, calibrate.py, gen_ecg_tables.py, gen_display_assets.py, display_preview.py
 docs/       Aufbau, Sicherheit, Protokoll, Messprotokolle (M4)
 PLAN.md     dieses Dokument
 ```
@@ -337,7 +342,7 @@ PLAN.md     dieses Dokument
 | M3 | fertig (synthetisch getestet) | MIT-BIH-Benchmark muss noch lokal laufen: `tools/mitbih_benchmark.py` |
 | M4 | Werkzeug fertig, Messung offen | Kalibrier-Assistent gegen den simulierten Loopback getestet (Verstärkung ±1 %) |
 | M5 | fertig | EDF+/WFDB/CSV/PDF, Messschieber, HRV, Median-Schlag |
-| M6 | offen | Phase 2 |
+| M6 | teilweise, auf Hardware ungetestet | Display und DSP in C fertig (C = Python im Test); Batteriebox statt Akku; SD-Karte offen |
 
 ## 14. Erkenntnisse aus der ersten realen Messung (28.10.2026, 30 min)
 

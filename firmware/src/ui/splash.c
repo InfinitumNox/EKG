@@ -1,0 +1,101 @@
+#include "splash.h"
+
+#include <math.h>
+#include <stdio.h>
+
+#include "assets.h"
+#include "theme.h"
+
+// Stilisierter Herzschlag (P, QRS, T) als Polylinie, x in 0 … 1, y in mV-ähnlichen Einheiten
+static const float BEAT[][2] = {
+    {0.00f, 0.0f},   {0.10f, 0.0f},   {0.14f, 0.12f},  {0.18f, 0.0f},   {0.24f, 0.0f},
+    {0.26f, -0.15f}, {0.29f, 1.0f},   {0.32f, -0.35f}, {0.35f, 0.0f},   {0.46f, 0.0f},
+    {0.52f, 0.22f},  {0.58f, 0.24f},  {0.64f, 0.0f},   {1.00f, 0.0f},
+};
+#define BEAT_N (int)(sizeof(BEAT) / sizeof(BEAT[0]))
+
+static int ramp(uint32_t t, uint32_t start, uint32_t dur) {
+    if (t <= start) {
+        return 0;
+    }
+    if (t >= start + dur) {
+        return 256;
+    }
+    float u = (float)(t - start) / (float)dur;
+    u = u * u * (3.0f - 2.0f * u);  // weich ein- und auslaufen
+    return (int)(u * 256.0f);
+}
+
+int splash_backlight(uint32_t t_ms) {
+    return ramp(t_ms, 0, 600) * 1000 / 256;
+}
+
+// EKG-Linie bis zur Position u (0 … 1) mit leuchtender Spitze
+static void draw_trace(canvas_t *c, float u, int opacity) {
+    const float x0 = 28.0f, x1 = (float)SCREEN_W - 28.0f, y0 = 214.0f, amp = 24.0f;
+    const int beats = 2;
+    float head_x = x0, head_y = y0;
+    float prev_x = x0, prev_y = y0;
+    for (int b = 0; b < beats; b++) {
+        for (int k = 1; k < BEAT_N; k++) {
+            float f0 = ((float)b + BEAT[k - 1][0]) / (float)beats;
+            float f1 = ((float)b + BEAT[k][0]) / (float)beats;
+            if (f0 >= u) {
+                break;
+            }
+            float frac = f1 <= u ? 1.0f : (u - f0) / (f1 - f0);
+            float ya = BEAT[k - 1][1], yb = BEAT[k][1];
+            float xa = x0 + (x1 - x0) * f0, xb = x0 + (x1 - x0) * (f0 + (f1 - f0) * frac);
+            float yb2 = ya + (yb - ya) * frac;
+            float pa = y0 - ya * amp, pb = y0 - yb2 * amp;
+            gfx_line(c, xa, pa, xb, pb, 5.0f, C_TRACE_GLOW, opacity / 3);
+            gfx_line(c, xa, pa, xb, pb, 2.0f, C_TRACE, opacity);
+            prev_x = xb;
+            prev_y = pb;
+        }
+    }
+    head_x = prev_x;
+    head_y = prev_y;
+    if (u > 0.0f && u < 1.0f) {
+        gfx_disc(c, head_x, head_y, 6.0f, C_TRACE, opacity / 5);
+        gfx_disc(c, head_x, head_y, 3.0f, 0xEFFFF7u, opacity);
+    }
+}
+
+void splash_render(canvas_t *c, uint32_t t, const char *version) {
+    gfx_vgradient(c, 0, 0, SCREEN_W, SCREEN_H, SPLASH_TOP, SPLASH_BOTTOM);
+
+    // Herz: schlägt mit ~70/min, zuerst eingeblendet
+    int heart_in = ramp(t, 0, 500);
+    uint32_t phase = t % 860u;
+    bool beat = t > 300 && phase < 140u;
+    const alpha_img_t *h = beat ? &IMG_HEART_66 : &IMG_HEART_58;
+    int hx = SCREEN_W / 2 - h->w / 2, hy = 62 - h->h / 2;
+    gfx_glow(c, SCREEN_W / 2.0f, 64.0f, beat ? 62.0f : 54.0f, C_ACCENT, heart_in * (beat ? 110 : 70) / 256);
+    gfx_image_hgrad(c, h, hx, hy, 0, h->w, C_ACCENT, C_ACCENT_2, heart_in);
+
+    // Schriftzug „Sophi“ weiß, „EKG“ im Verlauf
+    int logo_in = ramp(t, 250, 700);
+    int lx = SCREEN_W / 2 - IMG_LOGO.w / 2;
+    int ly = 140 - LOGO_BASELINE + (256 - logo_in) * 10 / 256;  // gleitet leicht nach oben
+    gfx_image_hgrad(c, &IMG_LOGO, lx, ly, 0, LOGO_SPLIT_X, C_TEXT, C_TEXT, logo_in);
+    gfx_image_hgrad(c, &IMG_LOGO, lx, ly, LOGO_SPLIT_X, IMG_LOGO.w, C_ACCENT, C_ACCENT_2, logo_in);
+
+    // Untertitel
+    int sub_in = ramp(t, 900, 600);
+    const char *sub = "1-Kanal-EKG";
+    gfx_text(c, &FONT_LABEL, SCREEN_W / 2 - gfx_text_width(&FONT_LABEL, sub) / 2, 168, sub,
+             C_TEXT_DIM, sub_in);
+
+    // EKG-Linie zeichnet sich
+    float u = (float)ramp(t, 700, 1900) / 256.0f;
+    draw_trace(c, u, 256);
+
+    // Version unten rechts
+    if (version) {
+        char buf[32];
+        snprintf(buf, sizeof buf, "v%s", version);
+        int w = gfx_text_width(&FONT_SMALL, buf);
+        gfx_text(c, &FONT_SMALL, SCREEN_W - w - 10, SCREEN_H - 9, buf, C_TEXT_FAINT, sub_in);
+    }
+}

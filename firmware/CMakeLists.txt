@@ -19,24 +19,40 @@ add_executable(ekg
     src/capture.c
     src/calsignal.c
     src/decimate.c
+    src/feed.c
     src/protocol.c
     src/testsignal.c
     src/usb_descriptors.c
+    src/display/display_task.c
+    src/display/hmi.c
+    src/display/ili9341.c
+    src/display/settings.c
+    src/ecg/hr.c
+    src/ecg/qrs.c
+    src/ecg/sosf.c
+    src/ui/assets.c
+    src/ui/gfx.c
+    src/ui/monitor.c
+    src/ui/splash.c
 )
-target_include_directories(ekg PRIVATE src)
+target_include_directories(ekg PRIVATE src src/display src/ecg src/ui)
 target_compile_options(ekg PRIVATE -Wall -Wextra)
 target_link_libraries(ekg PRIVATE
     pico_stdlib
     pico_unique_id
     hardware_adc
     hardware_dma
+    hardware_flash
     hardware_pwm
+    hardware_spi
     hardware_watchdog
+    pico_flash
+    pico_multicore
     tinyusb_device
     tinyusb_board
 )
 pico_enable_stdio_usb(ekg 0)
 pico_enable_stdio_uart(ekg 0)
 pico_set_program_name(ekg "Pico EKG")
-pico_set_program_version(ekg "0.1.0")
+pico_set_program_version(ekg "0.3.0")
 pico_add_extra_outputs(ekg)

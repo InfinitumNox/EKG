@@ -96,6 +96,9 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
   Für HF, HRV und Intervalle ist das nicht nötig.
 - **Simulator:** spricht das echte Protokoll. Szenarien: Sinusrhythmus, Extrasystolen, Vorhofflimmern,
   Brady-/Tachykardie, Artefakte, abfallende Elektrode.
+- **Display am Pico:** Startbildschirm „SophiEKG“, danach laufende Kurve, Herzfrequenz und Signalstatus auf
+  dem 2,8″-TFT, auch ohne Laptop mit Batteriebox. Die QRS-Erkennung ist dieselbe wie am Laptop, nach C
+  portiert und gegen die Python-Fassung getestet. Bedienung in [docs/AUFBAU.md](docs/AUFBAU.md).
 - **Kommandozeile:** `ekg-record --duration 300` (ohne Oberfläche), `ekg-export aufnahme.ekgrec --pdf b.pdf`.
 
 Aufnahmen liegen in `~/.local/share/ekg/aufnahmen/`, Einstellungen und Kalibrierungen in `~/.config/ekg/`.
@@ -107,6 +110,7 @@ cd host && uv venv && uv pip install -e ".[dev]"
 uv run pytest                                   # Host: Protokoll, DSP, Pipeline, Export, GUI
 cmake -S firmware/tests -B build/fw-tests && cmake --build build/fw-tests && build/fw-tests/test_firmware
 uv run python ../tools/mitbih_benchmark.py                 # QRS-Erkennung gegen MIT-BIH (lädt ~100 MB)
+uv run python ../tools/display_preview.py vorschau         # Display-Bildschirme als PNG (Firmware-Code)
 ```
 
 ## Grenzen (ehrlich)

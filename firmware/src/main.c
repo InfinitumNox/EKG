@@ -1,8 +1,9 @@
 // Pico-2-Firmware für das AD8232-EKG.
 //
-// Ablauf: ADC0 läuft frei mit 32 kHz (DMA), jeder 50-ms-Block wird zu 25 (500 Hz) oder
-// 50 (1000 Hz) Rohsummen dezimiert und als SAMPLES-Frame über USB-CDC 0 gesendet.
-// Gefiltert wird hier bewusst nichts, die Signalverarbeitung macht der Host.
+// Ablauf: ADC0 läuft ab dem Einschalten frei mit 32 kHz (DMA), jeder 50-ms-Block wird zu
+// 25 (500 Hz) oder 50 (1000 Hz) Rohsummen dezimiert. Kern 1 bekommt jeden Block für das
+// Display (eigene Filter und QRS-Erkennung); an den Laptop gehen die Rohsummen nur, wenn
+// er START geschickt hat, als SAMPLES-Frame über USB-CDC 0, ungefiltert wie bisher.
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -11,12 +12,15 @@
 #include "calsignal.h"
 #include "capture.h"
 #include "decimate.h"
+#include "display_task.h"
+#include "feed.h"
 #include "hardware/gpio.h"
 #include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
 #include "protocol.h"
+#include "settings.h"
 #include "testsignal.h"
 #include "tusb.h"
 
@@ -170,8 +174,7 @@ static void stop_streaming(void) {
     if (!dev.streaming) {
         return;
     }
-    capture_stop();
-    dev.streaming = false;
+    dev.streaming = false;  // die Erfassung läuft für das Display weiter
     device_log("stop");
 }
 
@@ -335,6 +338,11 @@ static void process_block(void) {
         flags |= EKG_FLAG_CAL;
     }
     dev.lead_off_accum = read_lead_off();
+    feed_push(samples, (uint8_t)n, flags, (uint16_t)dev.factor);  // Display (Kern 1)
+    if (!dev.streaming) {
+        dev.gap_pending = false;
+        return;
+    }
 
     uint8_t payload[EKG_MAX_PAYLOAD];
     size_t len = ekg_build_samples(payload, dev.tx_seq++, block_no * (uint32_t)n, flags, samples,
@@ -398,29 +406,49 @@ int main(void) {
 
     bool watchdog_reboot = watchdog_caused_reboot();
     capture_init();
+    capture_start();  // läuft ab jetzt durchgehend, auch ohne Laptop (Display)
+    display_launch();
     tusb_init();
     watchdog_enable(2000, true);
 
     uint32_t last_status = 0;
     bool logged_boot = false;
+    bool logged_display = false;
     while (true) {
         watchdog_update();
         tud_task();
         poll_commands();
-        if (dev.streaming) {
-            dev.lead_off_accum |= read_lead_off();
-            process_block();
+        if (dev.mode != EKG_MODE_LIVE && !tud_cdc_n_connected(CDC_DATA)) {
+            dev.mode = EKG_MODE_LIVE;  // Laptop-Programm zu: Display zeigt nie das Testsignal
         }
+        dev.lead_off_accum |= read_lead_off();
+        process_block();
+        g_link.usb_mounted = tud_mounted();
+        g_link.streaming = dev.streaming;
         uint32_t now = to_ms_since_boot(get_absolute_time());
+        if (!dev.streaming) {
+            // nicht während einer Aufnahme: Flash löschen hält Kern 0 bis ~0,1 s an
+            settings_service(now);
+        }
         if (now - last_status >= STATUS_INTERVAL_MS) {
             last_status = now;
             if (tud_cdc_n_connected(CDC_DATA)) {
                 send_status();
             }
             if (!logged_boot && tud_cdc_n_connected(CDC_LOG)) {
-                device_log("Pico EKG %u.%u.%u%s", EKG_FW_VERSION_MAJOR, EKG_FW_VERSION_MINOR,
-                           EKG_FW_VERSION_PATCH, watchdog_reboot ? " (Neustart durch Watchdog)" : "");
+                device_log("SophiEKG (Pico EKG) %u.%u.%u%s", EKG_FW_VERSION_MAJOR,
+                           EKG_FW_VERSION_MINOR, EKG_FW_VERSION_PATCH,
+                           watchdog_reboot ? " (Neustart durch Watchdog)" : "");
                 logged_boot = true;
+            }
+            if (logged_boot && !logged_display && g_link.display_up) {
+                uint32_t id = g_link.display_id;
+                const char *what = id == 0x9341u ? "ILI9341"
+                                   : id == 0xFFFFu || id == 0u
+                                       ? "liest nicht zurück (SDO/MISO?), Bild kann trotzdem gehen"
+                                       : "kein ILI9341? Bei falschen Farben melden";
+                device_log("Display: Kennung 0x%04lx (%s)", (unsigned long)id, what);
+                logged_display = true;
             }
         }
         update_led();
