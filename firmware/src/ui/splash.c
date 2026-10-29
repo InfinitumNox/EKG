@@ -48,7 +48,9 @@ static void draw_trace(canvas_t *c, float u, int opacity) {
             float xa = x0 + (x1 - x0) * f0, xb = x0 + (x1 - x0) * (f0 + (f1 - f0) * frac);
             float yb2 = ya + (yb - ya) * frac;
             float pa = y0 - ya * amp, pb = y0 - yb2 * amp;
-            gfx_line(c, xa, pa, xb, pb, 5.0f, C_TRACE_GLOW, opacity / 3);
+            if (GLOW) {
+                gfx_line(c, xa, pa, xb, pb, 5.0f, C_TRACE_GLOW, opacity / 3);
+            }
             gfx_line(c, xa, pa, xb, pb, 2.0f, C_TRACE, opacity);
             prev_x = xb;
             prev_y = pb;
@@ -57,8 +59,10 @@ static void draw_trace(canvas_t *c, float u, int opacity) {
     head_x = prev_x;
     head_y = prev_y;
     if (u > 0.0f && u < 1.0f) {
-        gfx_disc(c, head_x, head_y, 6.0f, C_TRACE, opacity / 5);
-        gfx_disc(c, head_x, head_y, 3.0f, 0xEFFFF7u, opacity);
+        if (GLOW) {
+            gfx_disc(c, head_x, head_y, 6.0f, C_TRACE, opacity / 5);
+        }
+        gfx_disc(c, head_x, head_y, 3.0f, C_HEAD, opacity);
     }
 }
 
@@ -71,10 +75,13 @@ void splash_render(canvas_t *c, uint32_t t, const char *version) {
     bool beat = t > 300 && phase < 140u;
     const alpha_img_t *h = beat ? &IMG_HEART_66 : &IMG_HEART_58;
     int hx = SCREEN_W / 2 - h->w / 2, hy = 62 - h->h / 2;
-    gfx_glow(c, SCREEN_W / 2.0f, 64.0f, beat ? 62.0f : 54.0f, C_ACCENT, heart_in * (beat ? 110 : 70) / 256);
+    if (GLOW) {
+        gfx_glow(c, SCREEN_W / 2.0f, 64.0f, beat ? 62.0f : 54.0f, C_ACCENT,
+                 heart_in * (beat ? 110 : 70) / 256);
+    }
     gfx_image_hgrad(c, h, hx, hy, 0, h->w, C_ACCENT, C_ACCENT_2, heart_in);
 
-    // Schriftzug „Sophi“ weiß, „EKG“ im Verlauf
+    // Schriftzug „Sophi“ in Textfarbe, „EKG“ im Verlauf
     int logo_in = ramp(t, 250, 700);
     int lx = SCREEN_W / 2 - IMG_LOGO.w / 2;
     int ly = 140 - LOGO_BASELINE + (256 - logo_in) * 10 / 256;  // gleitet leicht nach oben

@@ -14,7 +14,7 @@
 typedef struct {
     uint32_t magic;
     uint8_t rotation;
-    uint8_t brightness;
+    uint8_t look;
     uint8_t reserved[2];
     uint32_t check;
 } stored_t;
@@ -25,17 +25,17 @@ static ui_settings_t wanted;
 static uint8_t page[FLASH_PAGE_SIZE] __attribute__((aligned(4)));
 
 static uint32_t checksum(const stored_t *s) {
-    return s->magic ^ ((uint32_t)s->rotation << 8 | s->brightness) ^ 0x5A5AA5A5u;
+    return s->magic ^ ((uint32_t)s->rotation << 8 | s->look) ^ 0x5A5AA5A5u;
 }
 
 void settings_load(ui_settings_t *s) {
     const stored_t *st = (const stored_t *)(XIP_BASE + SETTINGS_OFFSET);
     s->rotation = 0;
-    s->brightness = 0;
+    s->look = 0;
     if (st->magic == MAGIC && st->check == checksum(st) && st->rotation <= 1 &&
-        st->brightness <= 2) {
+        st->look <= 3) {
         s->rotation = st->rotation;
-        s->brightness = st->brightness;
+        s->look = st->look;
     }
 }
 
@@ -58,7 +58,7 @@ void settings_service(uint32_t now_ms) {
     }
     pending = false;
     __dmb();
-    stored_t st = {MAGIC, wanted.rotation, wanted.brightness, {0, 0}, 0};
+    stored_t st = {MAGIC, wanted.rotation, wanted.look, {0, 0}, 0};
     st.check = checksum(&st);
     memset(page, 0xFF, sizeof page);
     memcpy(page, &st, sizeof st);

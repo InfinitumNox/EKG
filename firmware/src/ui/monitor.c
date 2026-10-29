@@ -38,7 +38,7 @@ static void clear_column(monitor_t *m, int x) {
     if (x < TRACE_X0 || x >= TRACE_X1) {
         return;
     }
-    uint16_t bg = rgb565(C_BG), grid = rgb565(C_GRID_MAJOR);
+    uint16_t bg = rgb565(C_BG), grid = rgb565(C_GRID);
     for (int y = TRACE_Y0; y < TRACE_Y1; y++) {
         m->c->px[y * m->c->w + x] = grid_at(x, y) ? grid : bg;
     }
@@ -104,7 +104,7 @@ static void draw_heart(monitor_t *m, bool big) {
     gfx_fill(m->c, 4, BOTTOM_Y + 4, 40, 50, C_PANEL);
     const alpha_img_t *h = big ? &IMG_HEART_30 : &IMG_HEART_26;
     int cx = 24, cy = BOTTOM_Y + 30;
-    if (big) {
+    if (big && GLOW) {
         gfx_glow(m->c, (float)cx, (float)cy, 22.0f, C_ACCENT, 110);
     }
     gfx_image_hgrad(m->c, h, cx - h->w / 2, cy - h->h / 2, 0, h->w, C_ACCENT, C_ACCENT_2,
@@ -239,11 +239,13 @@ static void finish_column(monitor_t *m) {
         lo = fminf(lo, m->prev_y);
         hi = fmaxf(hi, m->prev_y);
     }
-    vspan(m->c, x, lo - 2.2f, hi + 2.2f, C_TRACE_GLOW, 90);
+    if (GLOW) {
+        vspan(m->c, x, lo - 2.2f, hi + 2.2f, C_TRACE_GLOW, 90);
+    }
     vspan(m->c, x, lo - 0.9f, hi + 0.9f, C_TRACE, OPAQUE);
     if (x + 3 < TRACE_X1) {  // leuchtende Spitze im Löschbereich
         float yl = to_y(m, m->col_last);
-        gfx_disc(m->c, (float)x + 3.5f, yl, 2.6f, 0xEFFFF7u, 200);
+        gfx_disc(m->c, (float)x + 3.5f, yl, 2.6f, C_HEAD, 200);
     }
     m->prev_y = to_y(m, m->col_last);
     m->have_prev = true;

@@ -66,9 +66,6 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         exe = build(tmp)
-        for t in (300, 1100, 1900, 3200):
-            subprocess.run([exe, "splash", str(t), str(tmp / "s.ppm")], check=True)
-            to_png(tmp / "s.ppm", out / f"splash_{t:04d}.png")
         # Live: kleine R-Zacke wie in den Aufnahmen vom 29.10., dann Elektrode ab
         g = SyntheticEcg(FS, scenario=Scenario.REST, seed=4, amplitude=0.7, mains_mv=0.4)
         mv = g.generate(FS * 30)
@@ -77,9 +74,14 @@ def main() -> None:
         mv[FS * 24 : FS * 27] = 1.4
         blocks_file(tmp / "b.bin", mv, flags)
         shots = ["1500", "9000", "22000", "25500", "29900"]
-        subprocess.run([exe, "monitor", str(tmp / "b.bin"), str(tmp / "m"), *shots], check=True)
-        for s in shots:
-            to_png(tmp / f"m_{int(s):05d}.ppm", out / f"monitor_{int(s):05d}.png")
+        for theme, opt in (("nacht", []), ("tag", ["tag"])):
+            for t in (300, 1100, 1900, 3200):
+                subprocess.run([exe, *opt, "splash", str(t), str(tmp / "s.ppm")], check=True)
+                to_png(tmp / "s.ppm", out / f"{theme}_splash_{t:04d}.png")
+            cmd = [exe, *opt, "monitor", str(tmp / "b.bin"), str(tmp / "m"), *shots]
+            subprocess.run(cmd, check=True)
+            for s in shots:
+                to_png(tmp / f"m_{int(s):05d}.ppm", out / f"{theme}_monitor_{int(s):05d}.png")
     print(out)
 
 

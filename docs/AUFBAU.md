@@ -153,8 +153,14 @@ kein Laptop angeschlossen sein. Ist einer angeschlossen, laufen Aufnahme und Anz
 
 | Geste | Wirkung |
 |---|---|
-| kurz tippen | Helligkeit 100 % → 50 % → 20 % |
+| kurz tippen | nächste Stufe: **Tag** → Nacht 100 % → Nacht 50 % → Nacht 20 % → wieder Tag |
 | 2 s halten | Bild um 180° drehen |
+
+**Tag** zeigt eine dunkle Kurve auf hellem Grund wie EKG-Papier und ist für Tageslicht gedacht. **Nacht** ist
+dunkel mit leuchtender Kurve. Die Beleuchtung läuft bei Tag und bei Nacht 100 % schon mit voller Kraft; heller
+kann dieses Modul nicht. Bei Tageslicht wirkt ein TFT trotzdem nur mit hellem Grund hell, denn das Licht kommt
+allein von der Beleuchtung und muss gegen die Spiegelung ankommen. Gegen Spiegelungen hilft zusätzlich eine
+matte Schutzfolie; der Touch funktioniert durch sie hindurch.
 
 Beide Einstellungen bleiben nach dem Ausschalten erhalten. Solange das Laptop-Programm Daten empfängt,
 speichert der Pico erst danach, denn das Schreiben in den Flash hält die Erfassung kurz an.

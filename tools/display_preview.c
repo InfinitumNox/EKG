@@ -1,8 +1,10 @@
 // Vorschau der Display-Bildschirme am Laptop: rendert mit demselben Code wie das Gerät
 // in PPM-Dateien. Aufruf über tools/display_preview.py.
 //
-//   display_preview splash <t_ms> <out.ppm>
-//   display_preview monitor <blocks.bin> <out_prefix> <t_ms> [<t_ms> …]
+//   display_preview [tag] splash <t_ms> <out.ppm>
+//   display_preview [tag] monitor <blocks.bin> <out_prefix> <t_ms> [<t_ms> …]
+//
+// „tag“ wählt das helle Farbschema, sonst wird das dunkle gezeichnet.
 //
 // blocks.bin: je Block uint8 n, uint8 flags, uint16 Faktor, uint32 Zeit (ms), n × uint32 Rohwert
 
@@ -11,6 +13,7 @@
 #include <string.h>
 
 #include "monitor.h"
+#include "protocol.h"
 #include "splash.h"
 #include "theme.h"
 
@@ -37,8 +40,16 @@ static monitor_t mon;
 
 int main(int argc, char **argv) {
     canvas_t c = {px, SCREEN_W, SCREEN_H};
+    if (argc > 1 && strcmp(argv[1], "tag") == 0) {
+        g_theme = &THEME_DAY;
+        argc--;
+        argv++;
+    }
+    char version[16];
+    snprintf(version, sizeof version, "%u.%u.%u", EKG_FW_VERSION_MAJOR, EKG_FW_VERSION_MINOR,
+             EKG_FW_VERSION_PATCH);
     if (argc == 4 && strcmp(argv[1], "splash") == 0) {
-        splash_render(&c, (uint32_t)atoi(argv[2]), "0.3.0");
+        splash_render(&c, (uint32_t)atoi(argv[2]), version);
         write_ppm(argv[3], &c);
         return 0;
     }
@@ -85,6 +96,6 @@ int main(int argc, char **argv) {
         fclose(f);
         return 0;
     }
-    fprintf(stderr, "Aufruf: display_preview splash <t_ms> <out.ppm> | monitor <bin> <prefix> <t…>\n");
+    fprintf(stderr, "Aufruf: display_preview [tag] splash <t_ms> <out.ppm> | monitor <bin> <prefix> <t…>\n");
     return 2;
 }

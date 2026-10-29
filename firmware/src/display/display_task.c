@@ -20,7 +20,18 @@
 #define TAP_MAX_MS 800u
 #define LONG_PRESS_MS 2000u
 
-static const int BRIGHTNESS[3] = {1000, 500, 200};  // Promille
+// Tippen schaltet der Reihe nach: Tag (hell, für Tageslicht), dann Nacht mit 100/50/20 %
+typedef struct {
+    const theme_t *theme;
+    int backlight;  // Promille
+} look_t;
+static const look_t LOOKS[] = {
+    {&THEME_DAY, 1000},
+    {&THEME_NIGHT, 1000},
+    {&THEME_NIGHT, 500},
+    {&THEME_NIGHT, 200},
+};
+#define N_LOOKS (sizeof LOOKS / sizeof LOOKS[0])
 
 static uint16_t fb[SCREEN_W * SCREEN_H];
 static monitor_t mon;
@@ -61,9 +72,15 @@ static void handle_touch(uint32_t now) {
     }
     if (!p && was && !long_done) {
         uint32_t d = now - since;
-        if (d >= TAP_MIN_MS && d <= TAP_MAX_MS) {  // kurz getippt: Helligkeit
-            ui.brightness = (uint8_t)((ui.brightness + 1u) % 3u);
-            backlight_set(BRIGHTNESS[ui.brightness]);
+        if (d >= TAP_MIN_MS && d <= TAP_MAX_MS) {  // kurz getippt: nächste Anzeigestufe
+            const theme_t *before = LOOKS[ui.look].theme;
+            ui.look = (uint8_t)((ui.look + 1u) % N_LOOKS);
+            if (LOOKS[ui.look].theme != before) {
+                g_theme = LOOKS[ui.look].theme;
+                monitor_draw_all(&mon);
+                push_all();
+            }
+            backlight_set(LOOKS[ui.look].backlight);
             settings_request_save(&ui, now);
         }
     }
@@ -73,6 +90,7 @@ static void handle_touch(uint32_t now) {
 static void core1_main(void) {
     flash_safe_execute_core_init();  // Kern 0 darf beim Speichern der Einstellungen anhalten
     settings_load(&ui);
+    g_theme = LOOKS[ui.look].theme;
     hmi_init();
     backlight_set(0);
     ili_init(ui.rotation);
@@ -91,14 +109,14 @@ static void core1_main(void) {
     for (uint32_t t = 0; t < SPLASH_DURATION_MS; t = now_ms() - t0) {
         splash_render(&c, t, version);
         push_all();
-        backlight_set(splash_backlight(t) * BRIGHTNESS[ui.brightness] / 1000);
+        backlight_set(splash_backlight(t) * LOOKS[ui.look].backlight / 1000);
         drain_feed();
     }
 
     mon.draw = true;
     monitor_set_link(&mon, g_link.usb_mounted, g_link.streaming);
     monitor_draw_all(&mon);
-    backlight_set(BRIGHTNESS[ui.brightness]);
+    backlight_set(LOOKS[ui.look].backlight);
     uint32_t last = 0;
     for (;;) {
         drain_feed();
