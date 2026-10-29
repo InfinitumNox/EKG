@@ -4,6 +4,9 @@
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
 #include "hardware/irq.h"
+#include "pico/time.h"
+
+#define VSYS_GPIO 29u  // Pico 2: VSYS über 200 k / 100 k
 
 static uint16_t buffers[2][EKG_ADC_BLOCK] __attribute__((aligned(4)));
 static int dma_ch[2];
@@ -38,6 +41,7 @@ static void configure_channels(void) {
 void capture_init(void) {
     adc_init();
     adc_gpio_init(EKG_ADC_GPIO);  // schaltet auch den digitalen Eingangspuffer ab (RP2350-E9)
+    adc_gpio_init(VSYS_GPIO);
     adc_select_input(EKG_ADC_GPIO - 26u);
     adc_fifo_setup(true, true, 1, false, false);
     adc_set_clkdiv((float)clock_get_hz(clk_adc) / (float)EKG_ADC_RATE_HZ - 1.0f);
@@ -98,4 +102,19 @@ const uint16_t *capture_next_block(uint32_t *block_no, uint32_t *lost) {
 
 uint32_t capture_fifo_overflows(void) {
     return fifo_overflows;
+}
+
+uint32_t capture_measure_vsys_mv(void) {
+    capture_stop();
+    adc_select_input(VSYS_GPIO - 26u);
+    busy_wait_us(20);
+    (void)adc_read();  // erste Wandlung nach dem Umschalten verwerfen
+    (void)adc_read();
+    uint32_t sum = 0;
+    for (int i = 0; i < 16; i++) {
+        sum += adc_read();
+    }
+    adc_select_input(EKG_ADC_GPIO - 26u);
+    capture_start();
+    return sum * 3u * 3300u / (16u * 4096u);
 }

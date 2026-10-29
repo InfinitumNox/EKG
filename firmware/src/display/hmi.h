@@ -1,7 +1,8 @@
 // Hintergrundbeleuchtung (GP5, PWM) und Touch (XPT2046 an SPI1, Meldeleitung GP14).
 //
-// Der Touch wird nur als Taste benutzt: T_IRQ geht auf Low, solange der Bildschirm
-// berührt wird. Kurz tippen = Helligkeit, 2 s halten = Bild um 180° drehen.
+// T_IRQ geht auf Low, solange der Bildschirm berührt wird; dann liefert der XPT2046
+// Druck und Rohkoordinaten (12 Bit). Ohne angeschlossenes T_DO bleiben die Werte am
+// Anschlag; der Touch taugt dann nur als Taste.
 
 #pragma once
 
@@ -17,3 +18,12 @@
 void hmi_init(void);
 void backlight_set(int permille);
 bool touch_pressed(void);
+
+typedef struct {
+    bool pressed;  // T_IRQ aktiv
+    bool valid;    // Koordinaten plausibel und ruhig
+    int rx, ry;    // Rohwerte (Median aus 5 Wandlungen)
+    int z;         // Druckmaß, ab ~300 sicher berührt
+} touch_sample_t;
+
+void touch_read(touch_sample_t *t);

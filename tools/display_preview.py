@@ -34,11 +34,15 @@ def build(tmp: Path) -> Path:
     if cc is None:
         sys.exit("kein C-Compiler gefunden")
     exe = tmp / "display_preview"
-    srcs = [*sorted((SRC / "ui").glob("*.c")), *sorted((SRC / "ecg").glob("*.c"))]
+    srcs = [
+        *sorted((SRC / "ui").glob("*.c")),
+        *sorted((SRC / "ecg").glob("*.c")),
+        *sorted((SRC / "analysis").glob("*.c")),
+    ]
+    inc = [f"-I{SRC / d}" for d in ("", "ui", "ecg", "analysis", "display")]
     subprocess.run(
-        [cc, "-O2", "-std=c11", "-Wall", "-Wextra", f"-I{SRC}", f"-I{SRC / 'ui'}",
-         f"-I{SRC / 'ecg'}", str(ROOT / "tools" / "display_preview.c"), *map(str, srcs),
-         "-o", str(exe), "-lm"],
+        [cc, "-O2", "-std=c11", "-Wall", "-Wextra", *inc,
+         str(ROOT / "tools" / "display_preview.c"), *map(str, srcs), "-o", str(exe), "-lm"],
         check=True,
     )  # fmt: skip
     return exe
@@ -74,6 +78,28 @@ def main() -> None:
         mv[FS * 24 : FS * 27] = 1.4
         blocks_file(tmp / "b.bin", mv, flags)
         shots = ["1500", "9000", "22000", "25500", "29900"]
+        # Bedienung: Menü, Messung (2:10), Auswertung mit allen Seiten, Einrichtung, Info
+        g = SyntheticEcg(FS, scenario=Scenario.REST, seed=6, amplitude=0.8, mains_mv=0.03)
+        mv = g.generate(FS * 150)
+        blocks_file(tmp / "a.bin", mv, np.zeros(len(mv), dtype=np.uint8))
+        script = [
+            "2500 shot live", "3000 tap 160 120", "3300 shot menu", "3500 tap 160 69",
+            "45000 shot messung", "134200 shot analyse",
+            "135500 shot seite1", "135600 tap 292 222", "135700 shot seite2",
+            "135800 tap 292 222", "135900 shot seite3", "136000 tap 292 222",
+            "136100 shot seite4", "136200 tap 292 222", "136300 shot seite5",
+            "136400 tap 100 222", "137000 tap 160 120", "137200 tap 230 161",
+            "137400 shot einrichten", "137500 long", "138000 tap 160 120",
+            "138200 tap 90 204", "138400 shot info",
+        ]  # fmt: skip
+        (tmp / "script.txt").write_text("\n".join(script) + "\n")
+        for theme, opt in (("nacht", []), ("tag", ["tag"])):
+            subprocess.run(
+                [exe, *opt, "app", str(tmp / "a.bin"), str(tmp / "app"), str(tmp / "script.txt")],
+                check=True,
+            )
+            for name in [line.split()[2] for line in script if " shot " in line]:
+                to_png(tmp / f"app_{name}.ppm", out / f"{theme}_app_{name}.png")
         for theme, opt in (("nacht", []), ("tag", ["tag"])):
             for t in (300, 1100, 1900, 3200):
                 subprocess.run([exe, *opt, "splash", str(t), str(tmp / "s.ppm")], check=True)

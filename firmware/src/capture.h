@@ -20,3 +20,8 @@ void capture_stop(void);
 const uint16_t *capture_next_block(uint32_t *block_no, uint32_t *lost);
 
 uint32_t capture_fifo_overflows(void);
+
+// VSYS in mV über den Teiler an GPIO29 (ADC3, VSYS/3 wie beim Pico 2). Unterbricht die
+// Erfassung für etwa 0,1 ms (der angefangene Block geht verloren); nicht während einer
+// Übertragung oder Messung aufrufen.
+uint32_t capture_measure_vsys_mv(void);

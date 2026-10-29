@@ -79,24 +79,83 @@ static void draw_chip(monitor_t *m, int *right, const char *text, uint32_t col) 
     *right = x - 6;
 }
 
+// Batteriesymbol mit Füllstand; liefert die linke Kante
+static int draw_battery(monitor_t *m, int right) {
+    char buf[8];
+    snprintf(buf, sizeof buf, "%d %%", m->battery_pct);
+    uint32_t col = m->battery_pct <= 10 ? C_ACCENT : m->battery_pct <= 20 ? C_WARN : C_TEXT_DIM;
+    const int bw = 20, bh = 11, by = 8;
+    int bx = right - bw - 3;
+    gfx_round_frame(m->c, bx, by, bw, bh, 3, 1.3f, col);
+    gfx_round_rect(m->c, bx + bw, by + 3, 3, bh - 6, 1, col, OPAQUE);
+    int fill = (bw - 4) * m->battery_pct / 100;
+    if (fill > 0) {
+        uint32_t fc = m->battery_pct <= 20 ? col : C_OK;
+        gfx_round_rect(m->c, bx + 2, by + 2, fill, bh - 4, 1, fc, OPAQUE);
+    }
+    int tw = gfx_text_width(&FONT_SMALL, buf);
+    gfx_text(m->c, &FONT_SMALL, bx - 5 - tw, 18, buf, col, OPAQUE);
+    return bx - 5 - tw - 8;
+}
+
+static void draw_menu_icon(monitor_t *m, int x, int y) {
+    for (int k = 0; k < 3; k++) {
+        float yy = (float)(y + k * 5) + 0.5f;
+        gfx_line(m->c, (float)x, yy, (float)x + 14.0f, yy, 2.0f, C_TEXT_DIM, OPAQUE);
+    }
+}
+
 static void draw_top(monitor_t *m) {
     gfx_fill(m->c, 0, 0, SCREEN_W, TOP_H, C_PANEL);
     gfx_fill(m->c, 0, TOP_H - 1, SCREEN_W, 1, C_PANEL_EDGE);
-    gfx_image_hgrad(m->c, &IMG_HEART_14, 9, 6, 0, IMG_HEART_14.w, C_ACCENT, C_ACCENT_2, OPAQUE);
-    int x = gfx_text(m->c, &FONT_LABEL, 30, 19, "Sophi", C_TEXT, OPAQUE);
-    gfx_text(m->c, &FONT_LABEL, x, 19, "EKG", C_ACCENT, OPAQUE);
     int right = SCREEN_W - 8;
-    if (m->test) {
-        draw_chip(m, &right, "TEST", C_WARN);
-    }
-    if (m->streaming) {
-        draw_chip(m, &right, "Laptop", C_OK);
-    } else if (m->usb) {
-        draw_chip(m, &right, "USB", C_TEXT_DIM);
+    if (m->measuring) {
+        // Messung: Zeit, Fortschritt und Stopp-Knopf
+        char buf[32];
+        int e = m->meas_elapsed_s, t = m->meas_total_s;
+        gfx_disc(m->c, 12.5f, 13.0f, 4.5f, C_ACCENT, (e % 2) ? 120 : OPAQUE);
+        int x = gfx_text(m->c, &FONT_LABEL, 24, 19, "Messung", C_TEXT, OPAQUE);
+        snprintf(buf, sizeof buf, "%d:%02d / %d:%02d", e / 60, e % 60, t / 60, t % 60);
+        gfx_text(m->c, &FONT_SMALL, x + 8, 18, buf, C_TEXT_DIM, OPAQUE);
+        const int bw = 62;
+        gfx_round_rect(m->c, SCREEN_W - bw - 5, 3, bw, 19, 9, C_ACCENT, OPAQUE);
+        const char *stop = "Stopp";
+        gfx_text(m->c, &FONT_SMALL, SCREEN_W - 5 - bw / 2 - gfx_text_width(&FONT_SMALL, stop) / 2,
+                 17, stop, 0xFFFFFFu, OPAQUE);
+        int w = t > 0 ? SCREEN_W * (e < t ? e : t) / t : 0;
+        gfx_fill(m->c, 0, TOP_H - 2, w, 2, C_ACCENT);
+        right = SCREEN_W - bw - 12;
+        if (m->battery_pct >= 0) {
+            right = draw_battery(m, right);
+        }
+    } else {
+        gfx_image_hgrad(m->c, &IMG_HEART_14, 9, 6, 0, IMG_HEART_14.w, C_ACCENT, C_ACCENT_2,
+                        OPAQUE);
+        int x = gfx_text(m->c, &FONT_LABEL, 30, 19, "Sophi", C_TEXT, OPAQUE);
+        gfx_text(m->c, &FONT_LABEL, x, 19, "EKG", C_ACCENT, OPAQUE);
+        if (m->menu_button) {
+            draw_menu_icon(m, SCREEN_W - 22, 8);
+            right = SCREEN_W - 32;
+        }
+        if (m->battery_pct >= 0) {
+            right = draw_battery(m, right + 2);
+        }
+        if (m->test) {
+            draw_chip(m, &right, "TEST", C_WARN);
+        }
+        if (m->streaming) {
+            draw_chip(m, &right, "Laptop", C_OK);
+        } else if (m->usb) {
+            draw_chip(m, &right, "USB", C_TEXT_DIM);
+        }
     }
     m->shown_test = m->test;
     m->shown_usb = m->usb;
     m->shown_streaming = m->streaming;
+    m->shown_battery = m->battery_pct;
+    m->shown_measuring = m->measuring;
+    m->shown_elapsed = m->meas_elapsed_s;
+    m->shown_menu_button = m->menu_button;
 }
 
 // ------------------------------------------------------------------ Fußleiste
@@ -316,6 +375,8 @@ void monitor_init(monitor_t *m, canvas_t *c) {
     m->status = MON_LEARNING;
     m->bpm = -1;
     m->rr_ms = -1;
+    m->battery_pct = -1;
+    m->shown_battery = -1;
     m->need_full = true;
 }
 
@@ -335,6 +396,24 @@ void monitor_draw_all(monitor_t *m) {
 void monitor_set_link(monitor_t *m, bool usb_mounted, bool streaming) {
     m->usb = usb_mounted;
     m->streaming = streaming;
+}
+
+void monitor_set_battery(monitor_t *m, int pct) {
+    m->battery_pct = pct;
+}
+
+void monitor_set_measure(monitor_t *m, bool active, int elapsed_s, int total_s) {
+    m->measuring = active;
+    m->meas_elapsed_s = active ? elapsed_s : 0;
+    m->meas_total_s = total_s;
+}
+
+void monitor_relearn(monitor_t *m) {
+    qrs_reset(&m->qrs, m->index);
+    hr_reset(&m->hr);
+    m->bpm = -1;
+    m->rr_ms = -1;
+    m->status = MON_LEARNING;
 }
 
 void monitor_feed(monitor_t *m, const uint32_t *raw, int n, uint8_t flags, uint32_t factor) {
@@ -443,7 +522,9 @@ int monitor_frame(monitor_t *m, uint32_t now_ms, rect_t *dirty, int max_dirty) {
         nd = add_rect(dirty, nd, max_dirty, 170, BOTTOM_Y + 2, SCREEN_W - 170, 54);
     }
     if (m->test != m->shown_test || m->usb != m->shown_usb ||
-        m->streaming != m->shown_streaming) {
+        m->streaming != m->shown_streaming || m->battery_pct != m->shown_battery ||
+        m->measuring != m->shown_measuring || m->meas_elapsed_s != m->shown_elapsed ||
+        m->menu_button != m->shown_menu_button) {
         draw_top(m);
         nd = add_rect(dirty, nd, max_dirty, 0, 0, SCREEN_W, TOP_H);
     }

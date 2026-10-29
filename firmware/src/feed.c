@@ -10,11 +10,15 @@ static volatile uint32_t tail;  // nur Kern 1 schreibt
 
 link_state_t g_link;
 
+static uint32_t seq;
+
 bool feed_push(const uint32_t *raw, uint8_t n, uint8_t flags, uint16_t factor) {
+    uint32_t s = seq++;
     if (head - tail >= FEED_BLOCKS) {
         return false;
     }
     feed_block_t *b = &ring[head % FEED_BLOCKS];
+    b->seq = s;
     if (n > FEED_MAX_SAMPLES) {
         n = FEED_MAX_SAMPLES;
     }

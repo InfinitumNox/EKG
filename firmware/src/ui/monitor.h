@@ -56,12 +56,20 @@ typedef struct {
     bool beat_pending;
     bool test;
     bool usb, streaming;
+    int battery_pct;  // -1: keine Anzeige (USB oder kein Messteiler)
+    bool measuring;   // Messung für die Auswertung läuft
+    int meas_elapsed_s, meas_total_s;
+    bool menu_button;  // Menü-Knopf oben rechts (nur mit Touch-Koordinaten)
 
     // zuletzt gezeichneter Zustand
     mon_status_t shown_status;
     int shown_bpm, shown_rr;
     bool shown_big_heart;
     bool shown_test, shown_usb, shown_streaming;
+    int shown_battery;
+    bool shown_measuring;
+    int shown_elapsed;
+    bool shown_menu_button;
     bool overlay;
     float shown_px_per_mv;
     bool need_full;
@@ -70,6 +78,10 @@ typedef struct {
 void monitor_init(monitor_t *m, canvas_t *c);
 void monitor_draw_all(monitor_t *m);
 void monitor_set_link(monitor_t *m, bool usb_mounted, bool streaming);
+void monitor_set_battery(monitor_t *m, int pct);  // -1: ausblenden
+void monitor_set_measure(monitor_t *m, bool active, int elapsed_s, int total_s);
+// Erkennung neu lernen lassen (nach einer Auswertung, die den Detektor geliehen hat)
+void monitor_relearn(monitor_t *m);
 void monitor_feed(monitor_t *m, const uint32_t *raw, int n, uint8_t flags, uint32_t factor);
 // Aktualisiert Anzeige-Elemente; schreibt die geänderten Bereiche nach dirty.
 int monitor_frame(monitor_t *m, uint32_t now_ms, rect_t *dirty, int max_dirty);

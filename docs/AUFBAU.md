@@ -151,10 +151,35 @@ Nach dem Einschalten zeigt das Display gut 3 s den Startbildschirm „SophiEKG�
 Herzfrequenz und Signalstatus rechnet der Pico selbst, mit derselben QRS-Erkennung wie der Laptop. Dafür muss
 kein Laptop angeschlossen sein. Ist einer angeschlossen, laufen Aufnahme und Anzeige wie bisher parallel.
 
-| Geste | Wirkung |
+**Touch einrichten (einmalig):** Beim ersten Start erscheinen nacheinander fünf Kreuze. Jeweils genau auf die
+Kreuzmitte tippen, am besten mit Fingernagel oder Stift. Die Einstellung bleibt gespeichert. Neu einrichten:
+im Menü „Touch einrichten“ oder, wenn nichts mehr trifft, 6 s irgendwo gedrückt halten.
+
+| Wo | Bedienung |
 |---|---|
-| kurz tippen | nächste Stufe: **Tag** → Nacht 100 % → Nacht 50 % → Nacht 20 % → wieder Tag |
-| 2 s halten | Bild um 180° drehen |
+| Live-Ansicht | Tippen öffnet das Menü |
+| Menü | **Messen & auswerten**, Letzte Auswertung, Anzeige (Tag / Nacht 100/50/20 %), Bild drehen, Touch einrichten, Info |
+| während der Messung | **Stopp** oben rechts beendet und wertet aus (ab 30 s) |
+| Auswertung | ‹ › oder wischen: Seiten · Live · Neu messen |
+
+**Messen & auswerten:** Die Messung läuft 2:10 Minuten, oben stehen Zeit und Fortschritt. Danach wertet der
+Pico die Aufnahme selbst aus, mit denselben Verfahren wie die Laptop-Software. Die Ergebnisse stehen auf
+fünf Seiten:
+
+1. **Übersicht:** Herzfrequenz Ø, min, max, Schläge, wichtigster Rhythmus-Hinweis, Signalqualität.
+2. **Verlauf:** RR-Intervalle über die Zeit; verworfene Intervalle (Extraschlag, Störung) sind rot markiert.
+3. **HRV:** RMSSD, SDNN, pNN50, SD1/SD2, LF/HF, stärkste Schwankung.
+4. **Median-Schlag:** Kurve mit P, Q, S, T und PR, QRS, QT, QTc (Fridericia), experimentell.
+5. **Hinweise:** alle Rhythmus- und Signalhinweise im Wortlaut.
+
+Die letzte Auswertung bleibt bis zur nächsten Messung abrufbar, aber nicht über das Ausschalten hinaus. Für
+Aufnahmen, die man behalten will, gibt es weiter die Laptop-Software. Nur die Atemschätzung fehlt auf dem
+Gerät, sie braucht mehr als drei Minuten. host/tests/test_firmware_analysis.py prüft mit simulierten
+Aufnahmen, dass Gerät und Laptop dieselben Schläge, HRV-Werte, Hinweise und Intervalle liefern.
+
+Liefert der Touch keine Koordinaten (T_DO an GP12 fehlt), meldet die Einrichtung das nach drei Versuchen.
+Dann gilt: tippen = nächste Anzeigestufe, 1,2 s halten = Messung starten oder beenden, in der Auswertung
+tippen = nächste Seite, halten = zurück.
 
 **Tag** zeigt eine dunkle Kurve auf hellem Grund wie EKG-Papier und ist für Tageslicht gedacht. **Nacht** ist
 dunkel mit leuchtender Kurve. Die Beleuchtung läuft bei Tag und bei Nacht 100 % schon mit voller Kraft; heller
@@ -162,14 +187,18 @@ kann dieses Modul nicht. Bei Tageslicht wirkt ein TFT trotzdem nur mit hellem Gr
 allein von der Beleuchtung und muss gegen die Spiegelung ankommen. Gegen Spiegelungen hilft zusätzlich eine
 matte Schutzfolie; der Touch funktioniert durch sie hindurch.
 
-Beide Einstellungen bleiben nach dem Ausschalten erhalten. Solange das Laptop-Programm Daten empfängt,
-speichert der Pico erst danach, denn das Schreiben in den Flash hält die Erfassung kurz an.
+Anzeigestufe, Drehung und Touch-Einrichtung bleiben nach dem Ausschalten erhalten. Solange das Laptop-Programm
+Daten empfängt, speichert der Pico erst danach, denn das Schreiben in den Flash hält die Erfassung kurz an.
 
-Oben rechts steht **Laptop**, solange das Laptop-Programm Daten empfängt, sonst **USB**, wenn nur das
-Kabel steckt, und **TEST** beim Testsignal. Wird das Laptop-Programm geschlossen, schaltet der Pico vom
-Testsignal zurück auf die Elektroden. Unten stehen Herzfrequenz, Signalstatus und das letzte RR-Intervall. Die Eichzacke
-links ist 1 mV hoch, bei großer Verstärkung 0,5 mV. Die Verstärkung passt sich der R-Zacke an und wechselt
-nur, wenn die Kurve am linken Rand neu beginnt.
+Oben rechts steht der **Batteriestand** (nur im Batteriebetrieb), **Laptop**, solange das Laptop-Programm Daten
+empfängt, sonst **USB**, wenn nur das Kabel steckt, und **TEST** beim Testsignal. Wird das Laptop-Programm
+geschlossen, schaltet der Pico vom Testsignal zurück auf die Elektroden. Unten stehen Herzfrequenz,
+Signalstatus und das letzte RR-Intervall. Die Eichzacke links ist 1 mV hoch, bei großer Verstärkung 0,5 mV.
+Die Verstärkung passt sich der R-Zacke an und wechselt nur, wenn die Kurve am linken Rand neu beginnt.
+
+Den Batteriestand misst der Pico ohne Umbau über den eingebauten Spannungsteiler an GPIO29 (VSYS/3, wie
+beim Original-Pico-2), alle 20 s, nicht während einer Messung. Hat ein Klon diesen Teiler nicht, bleibt die
+Anzeige leer. Die Prozente sind eine Schätzung aus der Spannung von drei Alkali-Zellen.
 
 | Bild | Ursache |
 |---|---|
@@ -177,6 +206,7 @@ nur, wenn die Kurve am linken Rand neu beginnt.
 | bleibt dunkel | LED (GP5) oder VCC |
 | Rot und Blau vertauscht, gespiegelt oder verzerrt | bitte melden: anderer Controller als ILI9341 |
 | Tippen wirkt nicht | T_IRQ (GP14) |
+| Tippen trifft daneben | Touch neu einrichten (Menü oder 6 s halten) |
 
 `cat /dev/ttyACM1` zeigt beim Verbinden die Zeile „Display: Kennung 0x9341 (ILI9341)“. Steht dort
 „liest nicht zurück“, fehlt meist nur SDO (GP4); das Bild kann trotzdem funktionieren.

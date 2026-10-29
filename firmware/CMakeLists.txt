@@ -30,13 +30,20 @@ add_executable(ekg
     src/ecg/hr.c
     src/ecg/qrs.c
     src/ecg/sosf.c
+    src/analysis/ana.c
+    src/analysis/ana_math.c
+    src/analysis/ana_rr.c
+    src/analysis/ana_wave.c
+    src/ui/app.c
     src/ui/assets.c
+    src/ui/gesture.c
     src/ui/gfx.c
     src/ui/monitor.c
     src/ui/splash.c
     src/ui/theme.c
+    src/ui/touchcal.c
 )
-target_include_directories(ekg PRIVATE src src/display src/ecg src/ui)
+target_include_directories(ekg PRIVATE src src/analysis src/display src/ecg src/ui)
 target_compile_options(ekg PRIVATE -Wall -Wextra)
 target_link_libraries(ekg PRIVATE
     pico_stdlib
@@ -55,5 +62,5 @@ target_link_libraries(ekg PRIVATE
 pico_enable_stdio_usb(ekg 0)
 pico_enable_stdio_uart(ekg 0)
 pico_set_program_name(ekg "Pico EKG")
-pico_set_program_version(ekg "0.3.1")
+pico_set_program_version(ekg "0.4.0")
 pico_add_extra_outputs(ekg)

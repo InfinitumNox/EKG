@@ -72,6 +72,9 @@ def render() -> str:
         "// Anzeige wie die Live-Ansicht am Laptop (Voreinstellung „Monitor“)",
         *_sos("ECG_DISPLAY_SOS", design_sos(PRESETS["monitor"][1], FS), "float"),
         "",
+        "// Auswertung: dieselbe Kette phasenfrei (vorwärts und rückwärts) wie ekg.analysis",
+        *_sos("ANA_SOS", design_sos(PRESETS["monitor"][1], FS), "double"),
+        "",
     ]
     return "\n".join(lines)
 

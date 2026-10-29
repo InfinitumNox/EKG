@@ -293,6 +293,11 @@ Die Schaltung steht in [docs/KALIBRIERUNG.md](docs/KALIBRIERUNG.md). **Währendd
 - DSP in C (umgesetzt): Pan-Tompkins und HF-Median als zeilengetreuer Port von `ekg.dsp`, Koeffizienten aus
   `tools/gen_ecg_tables.py`. `host/tests/test_firmware_ecg.py` vergleicht C und Python blockweise
   (Schlagindex auf 1e-6, Amplitude auf 1e-9 genau).
+- Auswertung auf dem Gerät (0.4.0): ekg.analysis nach C portiert (`firmware/src/analysis`), 2:10 min Rohdaten
+  im RAM (130 KB), gerechnet im Bildspeicher als Arbeitsspeicher. `host/tests/test_firmware_analysis.py`
+  vergleicht beide an simulierten Aufnahmen; nur die Atemschätzung fehlt (braucht > 3 min).
+- Touch: Koordinaten vom XPT2046, Einrichtung über 5 Punkte (Ausgleichsrechnung), Gesten.
+- Batteriestand über den eingebauten VSYS-Teiler an GPIO29, ohne Umbau.
 - Stromversorgung: vorerst 3×AA an VSYS (AUFBAU.md). Später LiPo mit Laderegler (z. B. MCP73831) und einem
   **rauscharmen LDO für den Analogteil**.
 - SD-Karte (SPI) speichert im selben Rohformat wie der Host-Recorder, damit die Review-Software es direkt öffnen kann.
@@ -342,7 +347,7 @@ PLAN.md     dieses Dokument
 | M3 | fertig (synthetisch getestet) | MIT-BIH-Benchmark muss noch lokal laufen: `tools/mitbih_benchmark.py` |
 | M4 | Werkzeug fertig, Messung offen | Kalibrier-Assistent gegen den simulierten Loopback getestet (Verstärkung ±1 %) |
 | M5 | fertig | EDF+/WFDB/CSV/PDF, Messschieber, HRV, Median-Schlag |
-| M6 | teilweise, auf Hardware ungetestet | Display und DSP in C fertig (C = Python im Test); Batteriebox statt Akku; SD-Karte offen |
+| M6 | weitgehend, Auswertung auf Hardware ungetestet | Display läuft (0.3.x); 0.4.0: Touch-Bedienung, Batteriestand, Auswertung auf dem Gerät (C = Python im Test); SD-Karte offen |
 
 ## 14. Erkenntnisse aus der ersten realen Messung (28.10.2026, 30 min)
 

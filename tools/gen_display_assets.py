@@ -18,10 +18,11 @@ from PIL import Image, ImageDraw, ImageFont
 INTER = Path("/usr/share/fonts/opentype/inter")
 OUT = Path(__file__).resolve().parents[1] / "firmware" / "src" / "ui"
 
-TEXT_CHARS = "".join(chr(c) for c in range(32, 127)) + "äöüÄÖÜß–·°µ…×→"
+TEXT_CHARS = "".join(chr(c) for c in range(32, 127)) + "äöüÄÖÜß–·°µ…×→²Ø‹›±≈„“"
 FONTS = [
     ("FONT_SMALL", "Inter-Medium.otf", 13, TEXT_CHARS),
     ("FONT_LABEL", "Inter-SemiBold.otf", 16, TEXT_CHARS),
+    ("FONT_VALUE", "InterDisplay-SemiBold.otf", 24, TEXT_CHARS),
     ("FONT_HR", "InterDisplay-Bold.otf", 52, "0123456789–- "),
 ]
 LOGO = ("InterDisplay-Bold.otf", 54, "Sophi", "EKG")

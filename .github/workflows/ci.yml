@@ -40,7 +40,7 @@ jobs:
         run: |
           cmake -S firmware/tests -B build/fw-tests -G Ninja
           cmake --build build/fw-tests
-          build/fw-tests/test_firmware
+          ctest --test-dir build/fw-tests --output-on-failure
       - name: Pico SDK
         run: |
           git clone --depth 1 --branch 2.2.0 https://github.com/raspberrypi/pico-sdk "$RUNNER_TEMP/pico-sdk"

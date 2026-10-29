@@ -65,3 +65,8 @@ void gfx_disc(canvas_t *c, float cx, float cy, float r, uint32_t rgb, int opacit
 void gfx_glow(canvas_t *c, float cx, float cy, float r, uint32_t rgb, int opacity);
 void gfx_round_rect(canvas_t *c, int x, int y, int w, int h, int r, uint32_t rgb, int opacity);
 void gfx_round_frame(canvas_t *c, int x, int y, int w, int h, int r, float width, uint32_t rgb);
+void gfx_triangle(canvas_t *c, float x0, float y0, float x1, float y1, float x2, float y2,
+                  uint32_t rgb, int opacity);
+// Fließtext mit Umbruch an Leerzeichen; c = NULL zählt nur. Liefert die Zeilenzahl.
+int gfx_text_wrap(canvas_t *c, const font_t *f, int x, int baseline, int width, int line_h,
+                  const char *utf8, uint32_t rgb, int max_lines);

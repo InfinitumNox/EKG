@@ -244,3 +244,124 @@ void gfx_round_frame(canvas_t *c, int x, int y, int w, int h, int r, float width
         }
     }
 }
+
+void gfx_triangle(canvas_t *c, float x0, float y0, float x1, float y1, float x2, float y2,
+                  uint32_t rgb, int opacity) {
+    float area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+    if (area == 0.0f) {
+        return;
+    }
+    if (area < 0.0f) {  // Kanten so ordnen, dass innen positiv ist
+        float tx = x1, ty = y1;
+        x1 = x2;
+        y1 = y2;
+        x2 = tx;
+        y2 = ty;
+    }
+    const float ex[3][4] = {{x0, y0, x1, y1}, {x1, y1, x2, y2}, {x2, y2, x0, y0}};
+    float len[3];
+    for (int k = 0; k < 3; k++) {
+        float dx = ex[k][2] - ex[k][0], dy = ex[k][3] - ex[k][1];
+        len[k] = sqrtf(dx * dx + dy * dy);
+    }
+    int bx0 = (int)floorf(fminf(x0, fminf(x1, x2))) - 1, bx1 = (int)ceilf(fmaxf(x0, fmaxf(x1, x2)));
+    int by0 = (int)floorf(fminf(y0, fminf(y1, y2))) - 1, by1 = (int)ceilf(fmaxf(y0, fmaxf(y1, y2)));
+    for (int j = by0; j <= by1; j++) {
+        for (int i = bx0; i <= bx1; i++) {
+            float px = (float)i + 0.5f, py = (float)j + 0.5f, d = 1e9f;
+            for (int k = 0; k < 3; k++) {
+                float e = ((ex[k][2] - ex[k][0]) * (py - ex[k][1]) -
+                           (ex[k][3] - ex[k][1]) * (px - ex[k][0])) /
+                          len[k];
+                d = fminf(d, e);
+            }
+            float cov = clampf(d + 0.5f, 0.0f, 1.0f);
+            if (cov > 0.0f) {
+                gfx_blend(c, i, j, rgb, (int)(cov * (float)opacity));
+            }
+        }
+    }
+}
+
+// Breite der UTF-8-Zeichen [s, e)
+static int span_width(const font_t *f, const char *s, const char *e) {
+    int w = 0;
+    while (s < e && *s) {
+        const glyph_t *g = find_glyph(f, next_cp(&s));
+        if (g) {
+            w += g->adv;
+        }
+    }
+    return w;
+}
+
+int gfx_text_wrap(canvas_t *c, const font_t *f, int x, int baseline, int width, int line_h,
+                  const char *s, uint32_t rgb, int max_lines) {
+    int lines = 0;
+    char buf[160];
+    while (*s && lines < max_lines) {
+        while (*s == ' ') {
+            s++;
+        }
+        if (!*s) {
+            break;
+        }
+        // so viele Wörter wie passen
+        const char *end = s, *best = NULL;
+        while (*end && *end != '\n') {
+            const char *w = end;
+            while (*w && *w != ' ' && *w != '\n') {
+                w++;
+            }
+            if (span_width(f, s, w) > width && best) {
+                break;
+            }
+            best = w;
+            end = w;
+            if (*end == ' ') {
+                end++;
+            }
+        }
+        if (!best) {
+            best = end;
+        }
+        size_t n = (size_t)(best - s);
+        if (n >= sizeof buf) {
+            n = sizeof buf - 1;
+        }
+        const char *rest = best;
+        while (*rest == ' ' || *rest == '\n') {
+            rest++;
+        }
+        bool last = lines == max_lines - 1 && *rest;
+        for (size_t i = 0; i < n; i++) {
+            buf[i] = s[i];
+        }
+        buf[n] = 0;
+        if (last) {
+            // letzte Zeile mit „…“ kürzen, falls noch Text folgt
+            while (n > 0 && span_width(f, buf, buf + n) + gfx_text_width(f, "…") > width) {
+                n--;
+                while (n > 0 && ((unsigned char)buf[n] & 0xC0u) == 0x80u) {
+                    n--;
+                }
+                buf[n] = 0;
+            }
+            if (n + 4 < sizeof buf) {
+                buf[n] = (char)0xE2;
+                buf[n + 1] = (char)0x80;
+                buf[n + 2] = (char)0xA6;
+                buf[n + 3] = 0;
+            }
+        }
+        if (c) {
+            gfx_text(c, f, x, baseline + lines * line_h, buf, rgb, OPAQUE);
+        }
+        lines++;
+        s = best;
+        if (*s == '\n') {
+            s++;
+        }
+    }
+    return lines;
+}

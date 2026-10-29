@@ -6,6 +6,7 @@
 
 extern const font_t FONT_SMALL;  // Inter 13 px
 extern const font_t FONT_LABEL;  // Inter 16 px
+extern const font_t FONT_VALUE;  // Inter 24 px
 extern const font_t FONT_HR;  // Inter 52 px
 
 extern const alpha_img_t IMG_LOGO;  // „SophiEKG“, Inter Display 54 px

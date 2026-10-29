@@ -2,7 +2,9 @@
 
 #include <stdio.h>
 
+#include "app.h"
 #include "feed.h"
+#include "gesture.h"
 #include "hardware/sync.h"
 #include "hmi.h"
 #include "ili9341.h"
@@ -14,29 +16,21 @@
 #include "settings.h"
 #include "splash.h"
 #include "theme.h"
+#include "touchcal.h"
 
 #define FRAME_MS 33u
-#define TAP_MIN_MS 40u
-#define TAP_MAX_MS 800u
-#define LONG_PRESS_MS 2000u
-
-// Tippen schaltet der Reihe nach: Tag (hell, für Tageslicht), dann Nacht mit 100/50/20 %
-typedef struct {
-    const theme_t *theme;
-    int backlight;  // Promille
-} look_t;
-static const look_t LOOKS[] = {
-    {&THEME_DAY, 1000},
-    {&THEME_NIGHT, 1000},
-    {&THEME_NIGHT, 500},
-    {&THEME_NIGHT, 200},
-};
-#define N_LOOKS (sizeof LOOKS / sizeof LOOKS[0])
+#define TOUCH_MS 20u
+#define RECAL_MS 6000u  // so lange gedrückt halten: Touch neu einrichten
 
 static uint16_t fb[SCREEN_W * SCREEN_H];
 static monitor_t mon;
-static uint32_t core1_stack[4096];  // 16 KB: der QRS-Detektor braucht mehr als die üblichen 2 KB
+static ana_recording_t rec;  // 130 s Rohdaten für die Auswertung
+static ana_result_t res;
+static app_t app;
+static gesture_t gest;
+static uint32_t core1_stack[4096];  // 16 KB: QRS-Detektor und Auswertung brauchen mehr als 2 KB
 static ui_settings_t ui;
+static char version[16];
 
 static uint32_t now_ms(void) {
     return to_ms_since_boot(get_absolute_time());
@@ -45,7 +39,7 @@ static uint32_t now_ms(void) {
 static void drain_feed(void) {
     feed_block_t b;
     while (feed_pop(&b)) {
-        monitor_feed(&mon, b.raw, b.n, b.flags, b.factor);
+        app_feed(&app, b.raw, b.n, b.flags, b.factor, b.seq);
     }
 }
 
@@ -53,44 +47,66 @@ static void push_all(void) {
     ili_push_rect(fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H);
 }
 
-static void handle_touch(uint32_t now) {
-    static bool was;
-    static bool long_done;
-    static uint32_t since;
-    bool p = touch_pressed();
-    if (p && !was) {
-        since = now;
-        long_done = false;
-    }
-    if (p && !long_done && now - since >= LONG_PRESS_MS) {
-        long_done = true;  // 2 s gehalten: Bild drehen
-        ui.rotation ^= 1u;
+static void apply_requests(const rect_t *dirty, int n, uint32_t now) {
+    if (app.req_rotate) {
+        app.req_rotate = false;
         ili_set_rotation(ui.rotation);
-        monitor_draw_all(&mon);
-        push_all();
+        app.req_push_all = true;
+    }
+    if (app.req_backlight >= 0) {
+        backlight_set(app.req_backlight);
+        app.req_backlight = -1;
+    }
+    if (app.req_save) {
+        app.req_save = false;
         settings_request_save(&ui, now);
     }
-    if (!p && was && !long_done) {
-        uint32_t d = now - since;
-        if (d >= TAP_MIN_MS && d <= TAP_MAX_MS) {  // kurz getippt: nächste Anzeigestufe
-            const theme_t *before = LOOKS[ui.look].theme;
-            ui.look = (uint8_t)((ui.look + 1u) % N_LOOKS);
-            if (LOOKS[ui.look].theme != before) {
-                g_theme = LOOKS[ui.look].theme;
-                monitor_draw_all(&mon);
-                push_all();
-            }
-            backlight_set(LOOKS[ui.look].backlight);
-            settings_request_save(&ui, now);
+    if (app.req_push_all) {
+        app.req_push_all = false;
+        push_all();
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        ili_push_rect(fb, SCREEN_W, dirty[i].x, dirty[i].y, dirty[i].w, dirty[i].h);
+    }
+}
+
+static void poll_touch(uint32_t now) {
+    static uint32_t pressed_since;
+    static bool was_pressed, recal_done;
+    touch_sample_t s;
+    touch_read(&s);
+    int x = 0, y = 0;
+    if (s.valid && ui.has_cal) {
+        touchcal_apply(&ui.cal, s.rx, s.ry, &x, &y);
+        if (ui.rotation) {
+            x = SCREEN_W - 1 - x;
+            y = SCREEN_H - 1 - y;
         }
     }
-    was = p;
+    if (s.pressed && !was_pressed) {
+        pressed_since = now;
+        recal_done = false;
+    }
+    was_pressed = s.pressed;
+    if (s.pressed && !recal_done && now - pressed_since >= RECAL_MS && app.screen != APP_CAL) {
+        // Notausgang bei falscher Kalibrierung: lange halten richtet den Touch neu ein
+        recal_done = true;
+        gesture_init(&gest);
+        app_calibrate(&app);
+        apply_requests(NULL, 0, now);
+        return;
+    }
+    ui_event_t ev = gesture_feed(&gest, s.pressed, s.valid, x, y, s.rx, s.ry, now);
+    if (ev.type != EV_NONE && !recal_done) {
+        app_event(&app, ev, now);
+        apply_requests(NULL, 0, now);
+    }
 }
 
 static void core1_main(void) {
     flash_safe_execute_core_init();  // Kern 0 darf beim Speichern der Einstellungen anhalten
     settings_load(&ui);
-    g_theme = LOOKS[ui.look].theme;
     hmi_init();
     backlight_set(0);
     ili_init(ui.rotation);
@@ -98,38 +114,51 @@ static void core1_main(void) {
     __dmb();
     g_link.display_up = true;
 
+    snprintf(version, sizeof version, "%u.%u.%u", EKG_FW_VERSION_MAJOR, EKG_FW_VERSION_MINOR,
+             EKG_FW_VERSION_PATCH);
     canvas_t c = {fb, SCREEN_W, SCREEN_H};
     monitor_init(&mon, &c);
     mon.draw = false;  // während des Startbildschirms nur rechnen (Erkennung lernt schon)
+    app.c = &c;
+    app.mon = &mon;
+    app.rec = &rec;
+    app.res = &res;
+    app.ui = &ui;
+    app.scratch = fb;
+    app.scratch_size = sizeof fb;
+    app.version = version;
+    app.display_id = g_link.display_id;
+    app_init(&app);  // setzt das Farbschema der gespeicherten Stufe
+    gesture_init(&gest);
 
-    char version[16];
-    snprintf(version, sizeof version, "%u.%u.%u", EKG_FW_VERSION_MAJOR, EKG_FW_VERSION_MINOR,
-             EKG_FW_VERSION_PATCH);
     uint32_t t0 = now_ms();
     for (uint32_t t = 0; t < SPLASH_DURATION_MS; t = now_ms() - t0) {
         splash_render(&c, t, version);
         push_all();
-        backlight_set(splash_backlight(t) * LOOKS[ui.look].backlight / 1000);
+        backlight_set(splash_backlight(t) * app_backlight(&app) / 1000);
         drain_feed();
     }
 
-    mon.draw = true;
-    monitor_set_link(&mon, g_link.usb_mounted, g_link.streaming);
-    monitor_draw_all(&mon);
-    backlight_set(LOOKS[ui.look].backlight);
-    uint32_t last = 0;
+    uint32_t now = now_ms();
+    app_set_status(&app, g_link.usb_mounted, g_link.streaming, g_link.vsys_mv);
+    app_start(&app, true, now);
+    app.req_backlight = app_backlight(&app);
+    apply_requests(NULL, 0, now);
+    uint32_t last_frame = 0, last_touch = 0;
     for (;;) {
         drain_feed();
-        uint32_t now = now_ms();
-        handle_touch(now);
-        if (now - last >= FRAME_MS) {
-            last = now;
-            monitor_set_link(&mon, g_link.usb_mounted, g_link.streaming);
+        now = now_ms();
+        if (now - last_touch >= TOUCH_MS) {
+            last_touch = now;
+            poll_touch(now);
+        }
+        if (now - last_frame >= FRAME_MS) {
+            last_frame = now;
+            app_set_status(&app, g_link.usb_mounted, g_link.streaming, g_link.vsys_mv);
+            g_link.no_pause = app.measuring;
             rect_t dirty[16];
-            int n = monitor_frame(&mon, now, dirty, 16);
-            for (int i = 0; i < n; i++) {
-                ili_push_rect(fb, SCREEN_W, dirty[i].x, dirty[i].y, dirty[i].w, dirty[i].h);
-            }
+            int n = app_frame(&app, now, dirty, 16);
+            apply_requests(dirty, n, now);
         }
     }
 }

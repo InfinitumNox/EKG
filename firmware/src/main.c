@@ -27,6 +27,7 @@
 #define PIN_LO_PLUS 20u
 #define PIN_LO_MINUS 21u
 #define PIN_SDN 22u
+#define VSYS_INTERVAL_MS 20000u
 #define PIN_SMPS_MODE 23u  // nur beim offiziellen Pico 2: High = Schaltregler im PWM-Modus
 
 // Auf 1 setzen, wenn das Board GPIO23 wie das Original an den Schaltregler führt.
@@ -412,6 +413,7 @@ int main(void) {
     watchdog_enable(2000, true);
 
     uint32_t last_status = 0;
+    uint32_t last_vsys = 0;
     bool logged_boot = false;
     bool logged_display = false;
     while (true) {
@@ -429,6 +431,11 @@ int main(void) {
         if (!dev.streaming) {
             // nicht während einer Aufnahme: Flash löschen hält Kern 0 bis ~0,1 s an
             settings_service(now);
+        }
+        if (!dev.streaming && !g_link.no_pause &&
+            (last_vsys == 0 ? now > 2000u : now - last_vsys >= VSYS_INTERVAL_MS)) {
+            last_vsys = now;
+            g_link.vsys_mv = (uint16_t)capture_measure_vsys_mv();  // Batteriestand fürs Display
         }
         if (now - last_status >= STATUS_INTERVAL_MS) {
             last_status = now;
