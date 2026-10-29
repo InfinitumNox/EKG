@@ -286,7 +286,9 @@ Die Schaltung steht in [docs/KALIBRIERUNG.md](docs/KALIBRIERUNG.md). **Währendd
 
 ### Phase 2 im Überblick (M6)
 
-- Display: z. B. ST7789 mit 320×240 über SPI. Der Framebuffer braucht 150 KB, der RP2350 hat 520 KB RAM.
+- Display: vorhanden ist ein 2,8″-TFT 240×320 mit ILI9341, Touch (XPT2046) und SD-Steckplatz. Anschluss in
+  [docs/AUFBAU.md](docs/AUFBAU.md) und [docs/breadboard_display.svg](docs/breadboard_display.svg). Ein voller
+  Framebuffer bräuchte 150 KB (der RP2350 hat 520 KB RAM); für die Sweep-Kurve genügen Teilaktualisierungen.
 - Akku: LiPo mit Laderegler (z. B. MCP73831) und einem **rauscharmen LDO für den Analogteil**.
 - SD-Karte (SPI) speichert im selben Rohformat wie der Host-Recorder, damit die Review-Software es direkt öffnen kann.
 - Gehäuse und Zugentlastung fürs Kabel.

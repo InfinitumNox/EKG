@@ -86,7 +86,50 @@ Bewegung lässt den AD8232 an den Anschlag laufen; solche Abschnitte blendet die
 
 ## Phase 2 (später): eigenständig mit Display
 
-- Display ST7789 (320×240, SPI) an SPI0. Pins werden dann in einer eigenen Firmware-Variante festgelegt.
+### Display anschließen (Vorschlag, Firmware folgt)
+
+![Steckplan mit Display](breadboard_display.svg)
+
+Das Display ist ein 2,8″-TFT mit 240×320 Pixeln („2.8 TFT SPI 240X320 V1.2“). Es hat den Controller ILI9341,
+einen Touch-Controller (XPT2046, U2), einen SD-Steckplatz, einen eigenen 3,3-V-Regler (U1) und einen Transistor
+für die Hintergrundbeleuchtung (Q1). Es steckt nicht im Breadboard, sondern liegt links daneben und hängt an
+14 Buchse–Stecker-Kabeln (10–20 cm). Alles kommt auf die linke Seite des Pico. Der ADC-Eingang und der AD8232
+liegen rechts, die AD8232-Verdrahtung bleibt unverändert.
+
+| Display (Pin) | Loch | Pico | Zweck |
+|---|---|---|---|
+| 1 VCC | j2 | Pin 39 VSYS | Versorgung ≈ 5 V; der Regler U1 auf dem Display macht daraus 3,3 V |
+| 2 GND | a13 | Pin 13 GND | Masse (digital, **nicht** AGND) |
+| 3 CS | a11 | GP8 | Display auswählen |
+| 4 RESET | a10 | GP7 | Display zurücksetzen |
+| 5 DC | a9 | GP6 | Daten/Befehl |
+| 6 SDI(MOSI) | a5 | GP3 | SPI0 Daten zum Display |
+| 7 SCK | a4 | GP2 | SPI0 Takt |
+| 8 LED | a7 | GP5 | Hintergrundbeleuchtung (schaltet nur Q1, per PWM dimmbar) |
+| 9 SDO(MISO) | a6 | GP4 | SPI0 Daten vom Display (Kennung lesen) |
+| 10 T_CLK | b4 | GP2 | Touch, gleiche Leitung wie SCK |
+| 11 T_CS | a2 | GP1 | Touch auswählen |
+| 12 T_DIN | b5 | GP3 | Touch, gleiche Leitung wie SDI |
+| 13 T_DO | b6 | GP4 | Touch, gleiche Leitung wie SDO |
+| 14 T_IRQ | a1 | GP0 | Berührung erkannt (low) |
+
+Später kommt die SD-Karte auf einem eigenen Bus (SPI1) dazu. Dafür muss in die vier Lötaugen SD_SCK, SD_MISO,
+SD_MOSI und SD_CS eine Stiftleiste eingelötet werden. Die Belegung ist SD_SCK → a14 (GP10), SD_MOSI → a15
+(GP11), SD_MISO → a16 (GP12) und SD_CS → a17 (GP13).
+
+| Regel | Warum |
+|---|---|
+| Lötbrücke **J1 offen** lassen | J1 überbrückt den 3,3-V-Regler und ist nur für 3,3 V an VCC gedacht. Mit VSYS (≈ 5 V) bekämen Display, Touch und SD-Karte 5 V. |
+| VCC an **VSYS**, nicht an 3V3(OUT) | Die 3,3-V-Schiene versorgt den AD8232 und ist die ADC-Referenz. Strompulse von Display und Beleuchtung erschienen dort als Störung im EKG. |
+| Display-GND an **Pin 13**, nicht an AGND (Pin 33) | Die Rückströme des Displays sollen nicht über die Analogmasse fließen. |
+| Display und Kabel **links**, weg vom AD8232 und vom Elektrodenkabel | Der SPI-Takt (20–40 MHz) strahlt ab; der AD8232-Eingang ist hochohmig. |
+
+Erster Test nach dem Anschluss: die drei Elektroden-Druckknöpfe auf ein Stück Alufolie drücken (Eingänge kurz
+geschlossen) und je eine Minute mit laufendem und mit ausgeschaltetem Display aufnehmen. Das Rauschen darf sich
+nicht sichtbar ändern.
+
+### Weitere Schritte
+
 - LiPo-Akku mit Laderegler (z. B. MCP73831) an VSYS und ein eigener rauscharmer LDO für den AD8232.
 - SD-Karte (SPI) im selben Rohformat wie die Laptop-Aufnahmen.
 - Die Signalverarbeitung wird nach C portiert und gegen die Python-Implementierung mit identischen
