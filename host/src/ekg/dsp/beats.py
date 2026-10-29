@@ -180,11 +180,12 @@ def _p_wave(
 ) -> tuple[int | None, int | None, float | None]:
     """P-Welle im Fenster [lo, hi): (Beginn, Spitze, Amplitude) oder None.
 
-    Die Amplitude wird gegen eine Gerade zwischen den Fenstergrenzen gemessen, nicht gegen
-    den QRS-Beginn: Die PR-Strecke liegt oft etwas tiefer als die TP-Strecke
-    (Vorhof-Repolarisation), ein fester Bezugspegel verfehlt dann den Beginn der P-Welle.
+    Gesucht wird die Spitze gegen eine Gerade zwischen den Fenstergrenzen, nicht gegen den
+    QRS-Beginn: Die PR-Strecke liegt oft tiefer als die TP-Strecke (Vorhof-Repolarisation,
+    bei hoher Herzfrequenz deutlich), ein fester Bezugspegel verfehlt dann die P-Welle.
     Der Beginn ist die Stelle, ab der die Steigung über 16 ms ruhig bleibt. Erreicht die
-    Suche dabei den Fensterrand, gilt der Beginn als nicht bestimmbar.
+    Suche dabei den Fensterrand, gilt der Beginn als nicht bestimmbar. Die Amplitude zählt
+    wie üblich ab dem Pegel am P-Beginn; gegen die abgesenkte PR-Strecke wäre sie zu groß.
     """
     ms = lambda v: round(v * fs / 1000.0)  # noqa: E731
     if hi - lo <= ms(60):
@@ -210,7 +211,7 @@ def _p_wave(
         j -= 1
     if j - w <= lo:
         return None, peak, amp * sign
-    return j, peak, amp * sign
+    return j, peak, float(x[peak] - x[j])
 
 
 def interval_rows(d: Delineation, mean_rr_s: float, suffix: str = "") -> list[tuple[str, str]]:

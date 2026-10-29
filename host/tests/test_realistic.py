@@ -67,7 +67,7 @@ def test_pr_with_lowered_pr_segment(rest):
     d = delineate(mb)
     assert d.pr_ms is not None
     assert 160 < d.pr_ms < 240, d.pr_ms  # früher am Fensterrand (250/300 ms)
-    assert d.p_amp_mv is not None and 0.05 < d.p_amp_mv < 0.15
+    assert d.p_amp_mv == pytest.approx(0.10, abs=0.015)  # ab P-Beginn, nicht ab PR-Strecke
 
 
 def test_classifier_detects_errors_and_ectopics():
