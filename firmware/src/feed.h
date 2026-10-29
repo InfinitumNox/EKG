@@ -30,7 +30,9 @@ typedef struct {
     volatile bool streaming;
     volatile uint32_t display_id;  // vom Display gelesene Kennung (Kern 1 schreibt)
     volatile bool display_up;      // Display initialisiert, display_id gültig
-    volatile uint16_t vsys_mv;     // letzte VSYS-Messung (0: noch keine)
+    volatile uint16_t vsys_mv;     // letzte VSYS-Messung
+    volatile bool vsys_usb;        // … gemessen, während USB verbunden war
+    volatile uint32_t vsys_seq;    // zählt die Messungen (zuletzt geschrieben)
     volatile bool no_pause;        // Kern 1 nimmt auf: Erfassung nicht unterbrechen
 } link_state_t;
 

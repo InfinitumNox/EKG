@@ -63,3 +63,23 @@ void touchcal_apply(const touch_cal_t *cal, int rx, int ry, int *x, int *y) {
     *x = (int)lrintf(cal->a * (float)rx + cal->b * (float)ry + cal->c);
     *y = (int)lrintf(cal->d * (float)rx + cal->e * (float)ry + cal->f);
 }
+
+void touch_land_to_screen(bool portrait, int xl, int yl, int *x, int *y) {
+    if (portrait) {
+        *x = 239 - yl;
+        *y = xl;
+    } else {
+        *x = xl;
+        *y = yl;
+    }
+}
+
+void touch_screen_to_land(bool portrait, int x, int y, int *xl, int *yl) {
+    if (portrait) {
+        *xl = y;
+        *yl = 239 - x;
+    } else {
+        *xl = x;
+        *yl = y;
+    }
+}

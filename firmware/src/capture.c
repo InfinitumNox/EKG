@@ -115,6 +115,8 @@ uint32_t capture_measure_vsys_mv(void) {
         sum += adc_read();
     }
     adc_select_input(EKG_ADC_GPIO - 26u);
+    adc_fifo_drain();
+    hw_set_bits(&adc_hw->fcs, ADC_FCS_OVER_BITS | ADC_FCS_UNDER_BITS);  // kein Scheinüberlauf
     capture_start();
     return sum * 3u * 3300u / (16u * 4096u);
 }

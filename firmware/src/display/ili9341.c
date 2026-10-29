@@ -56,8 +56,9 @@ static const uint8_t INIT[] = {
 };
 
 void ili_set_rotation(uint8_t rotation) {
-    // MV (Zeilen/Spalten tauschen) für quer, BGR-Reihenfolge des Panels
-    uint8_t madctl = rotation ? 0xE8 : 0x28;
+    // quer: MV (Zeilen/Spalten tauschen); hochkant: MX, gegenüber quer 90° im Uhrzeigersinn
+    // gedreht (linker Rand oben). Dazu die BGR-Reihenfolge des Panels.
+    uint8_t madctl = rotation ? 0x48 : 0x28;
     command(0x36, &madctl, 1);
 }
 

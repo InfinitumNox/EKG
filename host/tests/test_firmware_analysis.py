@@ -1,6 +1,6 @@
 """Die Auswertung im Gerät (firmware/src/analysis) rechnet wie ekg.analysis am Laptop.
 
-Beide bekommen dieselbe 130-s-Aufnahme im Format des Geräts (Rohsumme / 4 als 16 Bit).
+Beide bekommen dieselbe 2-min-Aufnahme im Format des Geräts (Rohsumme / 4 als 16 Bit).
 Das Gerät speichert das gefilterte Signal mit 0,1 µV Auflösung; deshalb gelten für
 Kurvenwerte kleine Toleranzen, Zählungen und Hinweise müssen genau stimmen.
 """
@@ -135,7 +135,7 @@ def lib(tmp_path_factory):
 
 def make_recording(
     scenario: Scenario,
-    seconds: float = 130.0,
+    seconds: float = 120.0,
     seed: int = 1,
     hr: float = 70.0,
     mains_mv: float = 0.04,

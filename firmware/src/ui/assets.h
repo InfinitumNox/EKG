@@ -13,6 +13,10 @@ extern const alpha_img_t IMG_LOGO;  // „SophiEKG“, Inter Display 54 px
 extern const int LOGO_SPLIT_X;  // erste Spalte von „EKG“
 extern const int LOGO_BASELINE;  // Grundlinie ab Oberkante
 
+extern const alpha_img_t IMG_LOGO_S;  // „SophiEKG“, Inter Display 42 px
+extern const int LOGO_S_SPLIT_X;  // erste Spalte von „EKG“
+extern const int LOGO_S_BASELINE;  // Grundlinie ab Oberkante
+
 extern const alpha_img_t IMG_HEART_14;
 extern const alpha_img_t IMG_HEART_26;
 extern const alpha_img_t IMG_HEART_30;

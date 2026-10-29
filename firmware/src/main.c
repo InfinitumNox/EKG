@@ -15,6 +15,7 @@
 #include "display_task.h"
 #include "feed.h"
 #include "hardware/gpio.h"
+#include "hardware/sync.h"
 #include "hardware/watchdog.h"
 #include "pico/bootrom.h"
 #include "pico/stdlib.h"
@@ -436,6 +437,9 @@ int main(void) {
             (last_vsys == 0 ? now > 2000u : now - last_vsys >= VSYS_INTERVAL_MS)) {
             last_vsys = now;
             g_link.vsys_mv = (uint16_t)capture_measure_vsys_mv();  // Batteriestand fürs Display
+            g_link.vsys_usb = tud_mounted();
+            __dmb();
+            g_link.vsys_seq = g_link.vsys_seq + 1;
         }
         if (now - last_status >= STATUS_INTERVAL_MS) {
             last_status = now;

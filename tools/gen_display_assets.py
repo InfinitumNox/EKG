@@ -26,6 +26,7 @@ FONTS = [
     ("FONT_HR", "InterDisplay-Bold.otf", 52, "0123456789–- "),
 ]
 LOGO = ("InterDisplay-Bold.otf", 54, "Sophi", "EKG")
+LOGO_S = ("InterDisplay-Bold.otf", 42, "Sophi", "EKG")  # hochkant (240 Pixel breit)
 HEARTS = [14, 26, 30, 58, 66]  # Pixelhöhe; je Paar Ruhe- und Schlag-Größe
 
 
@@ -106,29 +107,32 @@ def render() -> tuple[str, str]:
         c_lines.append("")
         h_lines.append(f"extern const font_t {name};  // Inter {size} px")
 
-    file, size, left, right = LOGO
-    font = ImageFont.truetype(str(INTER / file), size)
-    word = left + right
-    x0, y0, x1, y1 = font.getbbox(word, anchor="ls")
-    img = Image.new("L", (x1 - x0, y1 - y0), 0)
-    ImageDraw.Draw(img).text((-x0, -y0), word, font=font, fill=255, anchor="ls")
-    a = np.asarray(img, dtype=np.uint8)
-    # Trennspalte zwischen „Sophi“ und „EKG“: leere Spalte nahe der Breite von „Sophi“
-    guess = round(font.getlength(left)) - x0
-    empty = [c for c in range(a.shape[1]) if a[:, c].max() == 0]
-    split = min(empty, key=lambda c: abs(c - guess)) if empty else guess
-    c_lines += c_bytes("logo_alpha", a.ravel().tolist())
-    c_lines.append(f"const alpha_img_t IMG_LOGO = {{{a.shape[1]}, {a.shape[0]}, logo_alpha}};")
-    c_lines.append(f"const int LOGO_SPLIT_X = {split};")
-    c_lines.append(f"const int LOGO_BASELINE = {-y0};")
-    c_lines.append("")
-    h_lines += [
-        "",
-        f"extern const alpha_img_t IMG_LOGO;  // „{word}“, Inter Display {size} px",
-        "extern const int LOGO_SPLIT_X;  // erste Spalte von „EKG“",
-        "extern const int LOGO_BASELINE;  // Grundlinie ab Oberkante",
-        "",
-    ]
+    for suffix, (file, size, left, right) in (("", LOGO), ("_S", LOGO_S)):
+        font = ImageFont.truetype(str(INTER / file), size)
+        word = left + right
+        x0, y0, x1, y1 = font.getbbox(word, anchor="ls")
+        img = Image.new("L", (x1 - x0, y1 - y0), 0)
+        ImageDraw.Draw(img).text((-x0, -y0), word, font=font, fill=255, anchor="ls")
+        a = np.asarray(img, dtype=np.uint8)
+        # Trennspalte zwischen „Sophi“ und „EKG“: leere Spalte nahe der Breite von „Sophi“
+        guess = round(font.getlength(left)) - x0
+        empty = [c for c in range(a.shape[1]) if a[:, c].max() == 0]
+        split = min(empty, key=lambda c: abs(c - guess)) if empty else guess
+        name = f"logo{suffix.lower()}_alpha"
+        c_lines += c_bytes(name, a.ravel().tolist())
+        c_lines.append(
+            f"const alpha_img_t IMG_LOGO{suffix} = {{{a.shape[1]}, {a.shape[0]}, {name}}};"
+        )
+        c_lines.append(f"const int LOGO{suffix}_SPLIT_X = {split};")
+        c_lines.append(f"const int LOGO{suffix}_BASELINE = {-y0};")
+        c_lines.append("")
+        h_lines += [
+            "",
+            f"extern const alpha_img_t IMG_LOGO{suffix};  // „{word}“, Inter Display {size} px",
+            f"extern const int LOGO{suffix}_SPLIT_X;  // erste Spalte von „EKG“",
+            f"extern const int LOGO{suffix}_BASELINE;  // Grundlinie ab Oberkante",
+        ]
+    h_lines.append("")
     for s in HEARTS:
         a = heart(s)
         c_lines += c_bytes(f"heart_{s}_alpha", a.ravel().tolist())

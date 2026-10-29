@@ -1,5 +1,5 @@
-// Bedienung auf dem Gerät: Live-Ansicht, Menü, Messung mit Auswertung, Ergebnisseiten,
-// Touch-Einrichtung und Info. Ohne Hardware-Bezug: Der Display-Task liefert Messblöcke und
+// Bedienung auf dem Gerät: Live-Ansicht, Menü, Einstellungen, Messung mit Auswertung,
+// Ergebnisseiten, Touch-Einrichtung und Info, quer (320 × 240) und hochkant (240 × 320). Ohne Hardware-Bezug: Der Display-Task liefert Messblöcke und
 // Touch-Ereignisse und führt die Anforderungen (req_*) aus; die Vorschau am Laptop nutzt
 // denselben Code.
 
@@ -17,6 +17,7 @@
 typedef enum {
     APP_LIVE,
     APP_MENU,
+    APP_SETTINGS,
     APP_ANALYZING,
     APP_RESULT,
     APP_CAL,
@@ -55,9 +56,8 @@ typedef struct {
 
     // Status
     bool usb, streaming;
-    int vsys_mv;
-    float vsys_ema;
-    int battery_pct;
+    float vsys_ema;  // geglättete Batteriespannung in mV (0: keine Messung)
+    int battery_pct;  // -1: keine verlässliche Anzeige
     bool low_warned;
 
     // Einrichtung des Touch
@@ -85,7 +85,10 @@ void app_feed(app_t *a, const uint32_t *raw, int n, uint8_t flags, uint32_t fact
 void app_event(app_t *a, ui_event_t ev, uint32_t now_ms);
 // Touch neu einrichten (Notausgang, wenn die Kalibrierung nicht mehr stimmt)
 void app_calibrate(app_t *a);
-void app_set_status(app_t *a, bool usb, bool streaming, int vsys_mv);
+void app_set_status(app_t *a, bool usb, bool streaming);
+// neue VSYS-Messung von Kern 0; on_usb: gemessen, während USB verbunden war. Am USB liegt
+// VSYS bei 4,6–4,9 V; so zeigt sich, ob das Board den Teiler des Pico 2 (VSYS/3) hat.
+void app_vsys_sample(app_t *a, int vsys_mv, bool on_usb);
 // regelmäßig aufrufen (~30/s); liefert die neu zu übertragenden Bereiche
 int app_frame(app_t *a, uint32_t now_ms, rect_t *dirty, int max_dirty);
 // Helligkeit der aktuellen Stufe (Promille)

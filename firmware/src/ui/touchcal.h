@@ -14,3 +14,8 @@ typedef struct {
 bool touchcal_solve(const float *sx, const float *sy, const float *rx, const float *ry, int n,
                     touch_cal_t *out, float *max_err);
 void touchcal_apply(const touch_cal_t *cal, int rx, int ry, int *x, int *y);
+
+// Die Kalibrierung gilt für die Queransicht (320 × 240). Hochkant (240 × 320) ist das Bild um
+// 90° im Uhrzeigersinn gedreht: links wird oben, rechts unten.
+void touch_land_to_screen(bool portrait, int xl, int yl, int *x, int *y);
+void touch_screen_to_land(bool portrait, int x, int y, int *xl, int *yl);

@@ -23,8 +23,9 @@
 #define RECAL_MS 6000u  // so lange gedrückt halten: Touch neu einrichten
 
 static uint16_t fb[SCREEN_W * SCREEN_H];
+static canvas_t canvas = {fb, SCREEN_W, SCREEN_H};  // hochkant 240 × 320 (gleich viele Pixel)
 static monitor_t mon;
-static ana_recording_t rec;  // 130 s Rohdaten für die Auswertung
+static ana_recording_t rec;  // 2 min Rohdaten für die Auswertung
 static ana_result_t res;
 static app_t app;
 static gesture_t gest;
@@ -44,7 +45,7 @@ static void drain_feed(void) {
 }
 
 static void push_all(void) {
-    ili_push_rect(fb, SCREEN_W, 0, 0, SCREEN_W, SCREEN_H);
+    ili_push_rect(fb, canvas.w, 0, 0, canvas.w, canvas.h);
 }
 
 static void apply_requests(const rect_t *dirty, int n, uint32_t now) {
@@ -67,7 +68,7 @@ static void apply_requests(const rect_t *dirty, int n, uint32_t now) {
         return;
     }
     for (int i = 0; i < n; i++) {
-        ili_push_rect(fb, SCREEN_W, dirty[i].x, dirty[i].y, dirty[i].w, dirty[i].h);
+        ili_push_rect(fb, canvas.w, dirty[i].x, dirty[i].y, dirty[i].w, dirty[i].h);
     }
 }
 
@@ -78,11 +79,9 @@ static void poll_touch(uint32_t now) {
     touch_read(&s);
     int x = 0, y = 0;
     if (s.valid && ui.has_cal) {
-        touchcal_apply(&ui.cal, s.rx, s.ry, &x, &y);
-        if (ui.rotation) {
-            x = SCREEN_W - 1 - x;
-            y = SCREEN_H - 1 - y;
-        }
+        int xl, yl;
+        touchcal_apply(&ui.cal, s.rx, s.ry, &xl, &yl);  // Queransicht
+        touch_land_to_screen(ui.rotation == 1, xl, yl, &x, &y);
     }
     if (s.pressed && !was_pressed) {
         pressed_since = now;
@@ -116,10 +115,12 @@ static void core1_main(void) {
 
     snprintf(version, sizeof version, "%u.%u.%u", EKG_FW_VERSION_MAJOR, EKG_FW_VERSION_MINOR,
              EKG_FW_VERSION_PATCH);
-    canvas_t c = {fb, SCREEN_W, SCREEN_H};
-    monitor_init(&mon, &c);
+    canvas.w = ui.rotation == 1 ? SCREEN_H : SCREEN_W;
+    canvas.h = ui.rotation == 1 ? SCREEN_W : SCREEN_H;
+    canvas_t *c = &canvas;
+    monitor_init(&mon, c);
     mon.draw = false;  // während des Startbildschirms nur rechnen (Erkennung lernt schon)
-    app.c = &c;
+    app.c = c;
     app.mon = &mon;
     app.rec = &rec;
     app.res = &res;
@@ -133,14 +134,15 @@ static void core1_main(void) {
 
     uint32_t t0 = now_ms();
     for (uint32_t t = 0; t < SPLASH_DURATION_MS; t = now_ms() - t0) {
-        splash_render(&c, t, version);
+        splash_render(c, t, version);
         push_all();
         backlight_set(splash_backlight(t) * app_backlight(&app) / 1000);
         drain_feed();
     }
 
     uint32_t now = now_ms();
-    app_set_status(&app, g_link.usb_mounted, g_link.streaming, g_link.vsys_mv);
+    uint32_t vsys_seq = 0;
+    app_set_status(&app, g_link.usb_mounted, g_link.streaming);
     app_start(&app, true, now);
     app.req_backlight = app_backlight(&app);
     apply_requests(NULL, 0, now);
@@ -154,7 +156,12 @@ static void core1_main(void) {
         }
         if (now - last_frame >= FRAME_MS) {
             last_frame = now;
-            app_set_status(&app, g_link.usb_mounted, g_link.streaming, g_link.vsys_mv);
+            app_set_status(&app, g_link.usb_mounted, g_link.streaming);
+            if (g_link.vsys_seq != vsys_seq) {
+                vsys_seq = g_link.vsys_seq;
+                __dmb();
+                app_vsys_sample(&app, g_link.vsys_mv, g_link.vsys_usb);
+            }
             g_link.no_pause = app.measuring;
             rect_t dirty[16];
             int n = app_frame(&app, now, dirty, 16);

@@ -98,11 +98,12 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
   Brady-/Tachykardie, Artefakte, abfallende Elektrode.
 - **Display am Pico:** Startbildschirm „SophiEKG“, danach laufende Kurve, Herzfrequenz, Signalstatus und
   Batteriestand auf dem 2,8″-TFT, auch ohne Laptop mit Batteriebox. Bedienung per Touch (einmal einrichten),
-  helle Tagesansicht und dunkle Nachtansicht.
+  quer oder hochkant, Tag- und Nachtansicht, Verstärkung (Auto, 5–20 mm/mV) und Vorschub (12,5–50 mm/s) in
+  echten Millimetern.
 - **Auswertung auf dem Gerät:** 2-min-Messung, danach Herzfrequenz, Verlauf, HRV, Extraschläge,
-  Rhythmus-Hinweise, Median-Schlag mit PR/QRS/QT und Signalqualität direkt auf dem Display. Es sind dieselben
-  Verfahren wie am Laptop, in C portiert und gegen die Python-Fassung getestet. Die QRS-Erkennung ist dieselbe wie am Laptop, nach C
-  portiert und gegen die Python-Fassung getestet. Bedienung in [docs/AUFBAU.md](docs/AUFBAU.md).
+  Rhythmus-Hinweise, typischer Schlag mit PR/QRS/QT und Signalqualität direkt auf dem Display. Die Verfahren
+  sind aus der Laptop-Software nach C übertragen und gegen die Python-Fassung getestet. Bedienung in
+  [docs/AUFBAU.md](docs/AUFBAU.md).
 - **Kommandozeile:** `ekg-record --duration 300` (ohne Oberfläche), `ekg-export aufnahme.ekgrec --pdf b.pdf`.
 
 Aufnahmen liegen in `~/.local/share/ekg/aufnahmen/`, Einstellungen und Kalibrierungen in `~/.config/ekg/`.

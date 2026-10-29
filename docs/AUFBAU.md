@@ -152,53 +152,67 @@ Herzfrequenz und Signalstatus rechnet der Pico selbst, mit derselben QRS-Erkennu
 kein Laptop angeschlossen sein. Ist einer angeschlossen, laufen Aufnahme und Anzeige wie bisher parallel.
 
 **Touch einrichten (einmalig):** Beim ersten Start erscheinen nacheinander fünf Kreuze. Jeweils genau auf die
-Kreuzmitte tippen, am besten mit Fingernagel oder Stift. Die Einstellung bleibt gespeichert. Neu einrichten:
-im Menü „Touch einrichten“ oder, wenn nichts mehr trifft, 6 s irgendwo gedrückt halten.
+Kreuzmitte tippen, am besten mit Fingernagel oder Stift. Die Einstellung bleibt gespeichert und gilt quer wie
+hochkant. Neu einrichten: Einstellungen → „Touch einrichten“ oder, wenn nichts mehr trifft, 6 s irgendwo
+gedrückt halten.
 
 | Wo | Bedienung |
 |---|---|
 | Live-Ansicht | Tippen öffnet das Menü |
-| Menü | **Messen & auswerten**, Letzte Auswertung, Anzeige (Tag / Nacht 100/50/20 %), Bild drehen, Touch einrichten, Info |
+| Menü | **Messen & auswerten**, Letztes Ergebnis, Einstellungen, Schließen |
+| Einstellungen | Zeile antippen schaltet weiter: Anzeige, Ausrichtung, Verstärkung, Vorschub; dazu Touch einrichten und Info |
 | während der Messung | **Stopp** oben rechts beendet und wertet aus (ab 30 s) |
-| Auswertung | ‹ › oder wischen: Seiten · Live · Neu messen |
+| Ergebnis | ‹ › oder wischen: Seiten · Kurve · Neu messen |
 
-**Messen & auswerten:** Die Messung läuft 2:10 Minuten, oben stehen Zeit und Fortschritt. Danach wertet der
-Pico die Aufnahme selbst aus, mit denselben Verfahren wie die Laptop-Software. Die Ergebnisse stehen auf
-fünf Seiten:
+| Einstellung | Werte | Bedeutung |
+|---|---|---|
+| Anzeige | Tag, Nacht | Tag: dunkle Kurve auf hellem Grund wie EKG-Papier, für Tageslicht. Nacht: dunkel mit leuchtender Kurve |
+| Ausrichtung | Quer, Hochkant | Hochkant ist um 90° im Uhrzeigersinn gedreht: der linke Rand liegt oben |
+| Verstärkung | Auto, 5, 10, 20 mm/mV | Auto wählt aus 2,5 bis 40 mm/mV so, dass die R-Zacke gut die Hälfte der Höhe füllt |
+| Vorschub | 12,5, 25, 50 mm/s | 25 mm/s wie beim Standard-EKG |
 
-1. **Übersicht:** Herzfrequenz Ø, min, max, Schläge, wichtigster Rhythmus-Hinweis, Signalqualität.
-2. **Verlauf:** RR-Intervalle über die Zeit; verworfene Intervalle (Extraschlag, Störung) sind rot markiert.
-3. **HRV:** RMSSD, SDNN, pNN50, SD1/SD2, LF/HF, stärkste Schwankung.
-4. **Median-Schlag:** Kurve mit P, Q, S, T und PR, QRS, QT, QTc (Fridericia), experimentell.
+Die Millimeter sind echt: Das Panel hat 0,18 mm Pixelabstand, das gepunktete Raster liegt alle 5 mm. Die
+Eichzacke links ist 1 mV hoch (bei großer Verstärkung 0,5 mV). Die Verstärkung wechselt erst, wenn die Kurve
+am linken Rand neu beginnt.
+
+**Messen & auswerten:** Die Messung läuft 2 Minuten, oben stehen Zeit und Fortschritt. Danach wertet der Pico
+die Aufnahme selbst aus. Die Ergebnisse stehen auf fünf Seiten:
+
+1. **Übersicht:** Herzfrequenz Ø, min, max, Dauer, Schläge, wichtigster Rhythmus-Hinweis, Signalqualität.
+2. **Verlauf:** Schlagabstände über die Zeit; nicht gewertete (Extraschlag, Störung) sind rot markiert.
+3. **HRV:** RMSSD, SDNN, pNN50, SD1/SD2, LF/HF, Schwankung pro Minute.
+4. **Schlagform:** typischer Schlag (Median) mit P, Q, S, T und PR, QRS, QT, QTc (Fridericia).
 5. **Hinweise:** alle Rhythmus- und Signalhinweise im Wortlaut.
 
-Die letzte Auswertung bleibt bis zur nächsten Messung abrufbar, aber nicht über das Ausschalten hinaus. Für
-Aufnahmen, die man behalten will, gibt es weiter die Laptop-Software. Nur die Atemschätzung fehlt auf dem
-Gerät, sie braucht mehr als drei Minuten. host/tests/test_firmware_analysis.py prüft mit simulierten
-Aufnahmen, dass Gerät und Laptop dieselben Schläge, HRV-Werte, Hinweise und Intervalle liefern.
+Das letzte Ergebnis bleibt bis zur nächsten Messung abrufbar, aber nicht über das Ausschalten hinaus. Für
+Aufnahmen, die man behalten will, gibt es weiter die Laptop-Software. Gerechnet wird mit denselben Verfahren
+wie dort; nur die Atemschätzung fehlt, sie braucht mehr als drei Minuten. host/tests/test_firmware_analysis.py
+prüft mit simulierten Aufnahmen, dass Gerät und Laptop dieselben Schläge, HRV-Werte, Hinweise und Intervalle
+liefern.
 
 Liefert der Touch keine Koordinaten (T_DO an GP12 fehlt), meldet die Einrichtung das nach drei Versuchen.
-Dann gilt: tippen = nächste Anzeigestufe, 1,2 s halten = Messung starten oder beenden, in der Auswertung
-tippen = nächste Seite, halten = zurück.
+Dann gilt: tippen = Tag/Nacht, 1,2 s halten = Messung starten oder beenden, im Ergebnis tippen = nächste
+Seite, halten = zurück zur Kurve.
 
-**Tag** zeigt eine dunkle Kurve auf hellem Grund wie EKG-Papier und ist für Tageslicht gedacht. **Nacht** ist
-dunkel mit leuchtender Kurve. Die Beleuchtung läuft bei Tag und bei Nacht 100 % schon mit voller Kraft; heller
-kann dieses Modul nicht. Bei Tageslicht wirkt ein TFT trotzdem nur mit hellem Grund hell, denn das Licht kommt
-allein von der Beleuchtung und muss gegen die Spiegelung ankommen. Gegen Spiegelungen hilft zusätzlich eine
-matte Schutzfolie; der Touch funktioniert durch sie hindurch.
+Die Beleuchtung läuft bei Tag und Nacht mit voller Kraft; heller kann dieses Modul nicht. Bei Tageslicht wirkt
+ein TFT trotzdem nur mit hellem Grund hell, denn das Licht kommt allein von der Beleuchtung und muss gegen die
+Spiegelung ankommen. Gegen Spiegelungen hilft zusätzlich eine matte Schutzfolie; der Touch funktioniert durch
+sie hindurch.
 
-Anzeigestufe, Drehung und Touch-Einrichtung bleiben nach dem Ausschalten erhalten. Solange das Laptop-Programm
-Daten empfängt, speichert der Pico erst danach, denn das Schreiben in den Flash hält die Erfassung kurz an.
+Alle Einstellungen bleiben nach dem Ausschalten erhalten. Solange das Laptop-Programm Daten empfängt,
+speichert der Pico erst danach, denn das Schreiben in den Flash hält die Erfassung kurz an.
 
 Oben rechts steht der **Batteriestand** (nur im Batteriebetrieb), **Laptop**, solange das Laptop-Programm Daten
 empfängt, sonst **USB**, wenn nur das Kabel steckt, und **TEST** beim Testsignal. Wird das Laptop-Programm
 geschlossen, schaltet der Pico vom Testsignal zurück auf die Elektroden. Unten stehen Herzfrequenz,
-Signalstatus und das letzte RR-Intervall. Die Eichzacke links ist 1 mV hoch, bei großer Verstärkung 0,5 mV.
-Die Verstärkung passt sich der R-Zacke an und wechselt nur, wenn die Kurve am linken Rand neu beginnt.
+Signalstatus und das letzte RR-Intervall.
 
-Den Batteriestand misst der Pico ohne Umbau über den eingebauten Spannungsteiler an GPIO29 (VSYS/3, wie
-beim Original-Pico-2), alle 20 s, nicht während einer Messung. Hat ein Klon diesen Teiler nicht, bleibt die
-Anzeige leer. Die Prozente sind eine Schätzung aus der Spannung von drei Alkali-Zellen.
+**Batteriestand:** Der Pico misst ohne Umbau über den Spannungsteiler, den der Original-Pico-2 an GPIO29 hat
+(VSYS/3), alle 20 s, nicht während einer Messung oder Übertragung. Klone haben diesen Teiler nicht immer.
+Deshalb prüft der Pico ihn selbst: Am USB liegt VSYS bei etwa 4,7 V. Misst er dort etwas anderes, hat das Board
+keinen passenden Teiler, und die Anzeige bleibt dauerhaft aus (Info: „auf diesem Board nicht messbar“). Bis
+zu dieser Prüfung zeigt er nur Werte an, bei denen Display und Pico überhaupt laufen können. Die Prozente sind
+eine Schätzung aus der Spannung von drei Alkali-Zellen.
 
 | Bild | Ursache |
 |---|---|

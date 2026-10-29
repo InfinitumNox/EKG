@@ -22,11 +22,11 @@
 
 #define ANA_FS 500
 #define ANA_BLOCK 25                               // Samples je Block (50 ms)
-#define ANA_MAX_S 130                              // 2 min 10 s: HRV-Fenster ab 2 min
-#define ANA_MAX_SAMPLES (ANA_FS * ANA_MAX_S)       // 65 000
+#define ANA_MAX_S 120                              // Messdauer 2 Minuten
+#define ANA_MAX_SAMPLES (ANA_FS * ANA_MAX_S)       // 60 000
 #define ANA_MAX_BLOCKS (ANA_MAX_SAMPLES / ANA_BLOCK)
 #define ANA_MIN_S 30                               // kürzere Messungen werden nicht ausgewertet
-#define ANA_MAX_BEATS 680                          // > 300/min über 130 s
+#define ANA_MAX_BEATS 640                          // > 300/min über 2 min
 #define ANA_MAX_INVALID 256                        // ausgeblendete Abschnitte
 #define ANA_RAW_GAP 0xFFFFu                        // Rohwert für fehlende Samples
 #define ANA_RAW_MAX (4095u * 64u)                  // größte Rohsumme (12 Bit, 64-fach)

@@ -1,5 +1,5 @@
-// Einstellungen des Displays (Drehung, Anzeigestufe, Touch-Kalibrierung) im letzten
-// Flash-Sektor.
+// Einstellungen des Displays (Ausrichtung, Anzeige, Maßstab der Kurve, Touch-Kalibrierung)
+// im letzten Flash-Sektor.
 //
 // Kern 1 meldet Änderungen an; Kern 0 schreibt sie erst, wenn sich drei Sekunden lang
 // nichts mehr geändert hat. Beim Schreiben hält flash_safe_execute Kern 1 kurz an.
@@ -12,11 +12,16 @@
 #include "touchcal.h"
 
 typedef struct {
-    uint8_t rotation;  // 0 oder 1 (180° gedreht)
-    uint8_t look;      // 0 = Tag, 1 … 3 = Nacht 100/50/20 %
+    uint8_t rotation;  // 0 = quer, 1 = hochkant
+    uint8_t look;      // 0 = Tag, 1 = Nacht (frühere Stufen 2, 3 gelten als Nacht)
     bool has_cal;      // Touch eingerichtet
     touch_cal_t cal;   // Rohwert -> Bildschirm bei Drehung 0
+    uint8_t vsys;      // VSYS-Teiler: VSYS_UNKNOWN, VSYS_OK (wie Pico 2) oder VSYS_NONE
+    uint8_t gain;      // Verstärkung der Kurve (mon_gain_t, 0 = Auto)
+    uint8_t speed;     // Vorschub (mon_speed_t, 1 = 25 mm/s)
 } ui_settings_t;
+
+enum { VSYS_UNKNOWN = 0, VSYS_OK = 1, VSYS_NONE = 2 };
 
 void settings_load(ui_settings_t *s);
 void settings_request_save(const ui_settings_t *s, uint32_t now_ms);  // Kern 1

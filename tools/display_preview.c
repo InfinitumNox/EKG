@@ -1,14 +1,14 @@
 // Vorschau der Display-Bildschirme am Laptop: rendert mit demselben Code wie das Gerät
 // in PPM-Dateien. Aufruf über tools/display_preview.py.
 //
-//   display_preview [tag] splash <t_ms> <out.ppm>
-//   display_preview [tag] monitor <blocks.bin> <out_prefix> <t_ms> [<t_ms> …]
-//   display_preview [tag] app <blocks.bin> <out_prefix> <script>
+//   display_preview [tag] [hochkant] splash <t_ms> <out.ppm>
+//   display_preview [tag] [hochkant] monitor <blocks.bin> <out_prefix> <t_ms> [<t_ms> …]
+//   display_preview [tag] [hochkant] app <blocks.bin> <out_prefix> <script>
 //
 // app: spielt die Bedienung mit eingerichtetem Touch durch. Skript je Zeile:
 //   <t_ms> tap <x> <y> | long | swipe_l | swipe_r | shot <name>
 //
-// „tag“ wählt das helle Farbschema, sonst wird das dunkle gezeichnet.
+// „tag“ wählt das helle Farbschema (sonst das dunkle), „hochkant“ 240 × 320 statt quer.
 //
 // blocks.bin: je Block uint8 n, uint8 flags, uint16 Faktor, uint32 Zeit (ms), n × uint32 Rohwert
 
@@ -54,6 +54,8 @@ typedef struct {
     char name[64];
 } step_t;
 
+static bool portrait;
+
 static int run_app(const char *bins, const char *prefix, const char *script, const char *ver) {
     FILE *f = fopen(bins, "rb");
     FILE *sf = fopen(script, "r");
@@ -80,10 +82,12 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
         ns++;
     }
     fclose(sf);
-    canvas_t c = {px, SCREEN_W, SCREEN_H};
+    canvas_t c = {px, portrait ? SCREEN_H : SCREEN_W, portrait ? SCREEN_W : SCREEN_H};
     monitor_init(&mon, &c);
     ui.has_cal = true;
     ui.look = g_theme == &THEME_DAY ? 0 : 1;
+    ui.rotation = portrait ? 1 : 0;
+    ui.speed = MON_SPEED_25;
     app.c = &c;
     app.mon = &mon;
     app.rec = &rec;
@@ -94,7 +98,8 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
     app.version = ver;
     app.display_id = 0x9341u;
     app_init(&app);
-    app_set_status(&app, false, false, 4380);
+    app_set_status(&app, false, false);
+    app_vsys_sample(&app, 4380, false);
     app_start(&app, true, 0);
     int next = 0;
     uint32_t last_frame = 0, seq = 0;
@@ -148,12 +153,17 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
 }
 
 int main(int argc, char **argv) {
-    canvas_t c = {px, SCREEN_W, SCREEN_H};
     if (argc > 1 && strcmp(argv[1], "tag") == 0) {
         g_theme = &THEME_DAY;
         argc--;
         argv++;
     }
+    if (argc > 1 && strcmp(argv[1], "hochkant") == 0) {
+        portrait = true;
+        argc--;
+        argv++;
+    }
+    canvas_t c = {px, portrait ? SCREEN_H : SCREEN_W, portrait ? SCREEN_W : SCREEN_H};
     char version[16];
     snprintf(version, sizeof version, "%u.%u.%u", EKG_FW_VERSION_MAJOR, EKG_FW_VERSION_MINOR,
              EKG_FW_VERSION_PATCH);

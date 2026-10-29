@@ -62,5 +62,5 @@ target_link_libraries(ekg PRIVATE
 pico_enable_stdio_usb(ekg 0)
 pico_enable_stdio_uart(ekg 0)
 pico_set_program_name(ekg "Pico EKG")
-pico_set_program_version(ekg "0.4.0")
+pico_set_program_version(ekg "0.5.0")
 pico_add_extra_outputs(ekg)

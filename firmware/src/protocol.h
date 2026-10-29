@@ -14,7 +14,7 @@
 #define EKG_PROTO_VERSION 1u
 
 #define EKG_FW_VERSION_MAJOR 0u
-#define EKG_FW_VERSION_MINOR 4u
+#define EKG_FW_VERSION_MINOR 5u
 #define EKG_FW_VERSION_PATCH 0u
 
 enum ekg_frame_type {
