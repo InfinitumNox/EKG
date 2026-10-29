@@ -2,6 +2,8 @@
 
 ![Steckplan](breadboard.svg)
 
+Ohne Breadboard, direkt verkabelt und mit Display: siehe [Verdrahtung ohne Breadboard](#verdrahtung-ohne-breadboard-mit-display-wie-eingebaut) und [verdrahtung.svg](verdrahtung.svg).
+
 ## Sicherheit zuerst
 
 | Regel | Warum |
@@ -86,43 +88,58 @@ Bewegung lässt den AD8232 an den Anschlag laufen; solche Abschnitte blendet die
 
 ## Phase 2 (später): eigenständig mit Display
 
-### Display anschließen (Vorschlag, Firmware folgt)
+### Verdrahtung ohne Breadboard, mit Display (wie eingebaut)
 
-![Steckplan mit Display](breadboard_display.svg)
+![Verdrahtung ohne Breadboard](verdrahtung.svg)
+
+Im Gehäuse steckt alles mit Buchse–Buchse-Kabeln direkt auf den Stiften. Der Pico liegt mit der
+Rückseite nach oben, sodass die Beschriftung lesbar ist, USB-C zeigt nach rechts. Die AD8232-Belegung ist
+dieselbe wie im Steckplan oben.
+
+Ohne Breadboard nimmt jeder Stift nur ein Kabel auf. Deshalb hat der Touch-Controller einen eigenen Bus
+(SPI1) und teilt sich die Leitungen nicht mit dem Display.
 
 Das Display ist ein 2,8″-TFT mit 240×320 Pixeln („2.8 TFT SPI 240X320 V1.2“). Es hat den Controller ILI9341,
 einen Touch-Controller (XPT2046, U2), einen SD-Steckplatz, einen eigenen 3,3-V-Regler (U1) und einen Transistor
-für die Hintergrundbeleuchtung (Q1). Es steckt nicht im Breadboard, sondern liegt links daneben und hängt an
-14 Buchse–Stecker-Kabeln (10–20 cm). Alles kommt auf die linke Seite des Pico. Der ADC-Eingang und der AD8232
-liegen rechts, die AD8232-Verdrahtung bleibt unverändert.
+für die Hintergrundbeleuchtung (Q1).
 
-| Display (Pin) | Loch | Pico | Zweck |
-|---|---|---|---|
-| 1 VCC | j2 | Pin 39 VSYS | Versorgung ≈ 5 V; der Regler U1 auf dem Display macht daraus 3,3 V |
-| 2 GND | a13 | Pin 13 GND | Masse (digital, **nicht** AGND) |
-| 3 CS | a11 | GP8 | Display auswählen |
-| 4 RESET | a10 | GP7 | Display zurücksetzen |
-| 5 DC | a9 | GP6 | Daten/Befehl |
-| 6 SDI(MOSI) | a5 | GP3 | SPI0 Daten zum Display |
-| 7 SCK | a4 | GP2 | SPI0 Takt |
-| 8 LED | a7 | GP5 | Hintergrundbeleuchtung (schaltet nur Q1, per PWM dimmbar) |
-| 9 SDO(MISO) | a6 | GP4 | SPI0 Daten vom Display (Kennung lesen) |
-| 10 T_CLK | b4 | GP2 | Touch, gleiche Leitung wie SCK |
-| 11 T_CS | a2 | GP1 | Touch auswählen |
-| 12 T_DIN | b5 | GP3 | Touch, gleiche Leitung wie SDI |
-| 13 T_DO | b6 | GP4 | Touch, gleiche Leitung wie SDO |
-| 14 T_IRQ | a1 | GP0 | Berührung erkannt (low) |
+| Von | Farbe (dieser Aufbau) | Pico-Stift |
+|---|---|---|
+| AD8232 GND | türkis | AGND |
+| AD8232 3.3V | blau | 3V3 |
+| AD8232 OUTPUT | lila | **GP26_A0** |
+| AD8232 LO− | grau | GP21 |
+| AD8232 LO+ | weiß | GP20 |
+| AD8232 SDN | schwarz | GP22 |
+| Display VCC | lila (2) | **VSYS** (≈ 5 V) |
+| Display GND | grau (3) | GND zwischen GP9 und GP10 |
+| Display CS | weiß (4) | GP8 |
+| Display RESET | schwarz (5) | GP7 |
+| Display DC | braun (6) | GP6 |
+| Display SDI(MOSI) | rot (7) | GP3 (SPI0) |
+| Display SCK | orange (8) | GP2 (SPI0) |
+| Display LED | grün (10) | GP5 |
+| Display SDO(MISO) | gelb (9) | GP4 (SPI0) |
+| Touch T_CLK | blau (11) | GP10 (SPI1) |
+| Touch T_CS | lila (12) | GP13 |
+| Touch T_DIN | grau (13) | GP11 (SPI1) |
+| Touch T_DO | weiß (14) | GP12 (SPI1) |
+| Touch T_IRQ | blau (1)? | GP14 |
 
-Später kommt die SD-Karte auf einem eigenen Bus (SPI1) dazu. Dafür muss in die vier Lötaugen SD_SCK, SD_MISO,
-SD_MOSI und SD_CS eine Stiftleiste eingelötet werden. Die Belegung ist SD_SCK → a14 (GP10), SD_MOSI → a15
-(GP11), SD_MISO → a16 (GP12) und SD_CS → a17 (GP13).
+Die Zahl in Klammern ist die Lage im 14-adrigen Flachkabel, vom äußeren blauen Draht gezählt. Lila, grau,
+weiß und blau kommen doppelt vor. VCC ist das Lila direkt neben dem äußeren Blau; es vor dem Einstecken
+markieren, denn 5 V auf einem GPIO oder an einem Display-Eingang zerstören ihn. Die Farbe von T_IRQ war auf
+den Fotos verdeckt. Bei anderen Kabeln gilt nur die Spalte Pico-Stift.
+
+Die SD-Karte kommt später dazu. Dafür muss in die vier Lötaugen SD_SCK, SD_MISO, SD_MOSI und SD_CS eine
+Stiftleiste eingelötet werden; die Pins werden dann festgelegt.
 
 | Regel | Warum |
 |---|---|
 | Lötbrücke **J1 offen** lassen | J1 überbrückt den 3,3-V-Regler und ist nur für 3,3 V an VCC gedacht. Mit VSYS (≈ 5 V) bekämen Display, Touch und SD-Karte 5 V. |
-| VCC an **VSYS**, nicht an 3V3(OUT) | Die 3,3-V-Schiene versorgt den AD8232 und ist die ADC-Referenz. Strompulse von Display und Beleuchtung erschienen dort als Störung im EKG. |
-| Display-GND an **Pin 13**, nicht an AGND (Pin 33) | Die Rückströme des Displays sollen nicht über die Analogmasse fließen. |
-| Display und Kabel **links**, weg vom AD8232 und vom Elektrodenkabel | Der SPI-Takt (20–40 MHz) strahlt ab; der AD8232-Eingang ist hochohmig. |
+| VCC an **VSYS**, nicht an 3V3 | Die 3,3-V-Schiene versorgt den AD8232 und ist die ADC-Referenz. Strompulse von Display und Beleuchtung erschienen dort als Störung im EKG. |
+| Display-GND an einen GND-Stift der GP-Reihe, nicht an AGND | Die Rückströme des Displays sollen nicht über die Analogmasse fließen. |
+| Display-Kabel nicht neben dem lila OUTPUT-Kabel und dem Elektrodenkabel führen | Der SPI-Takt (20–40 MHz) strahlt ab; der AD8232-Eingang ist hochohmig. |
 
 Erster Test nach dem Anschluss: die drei Elektroden-Druckknöpfe auf ein Stück Alufolie drücken (Eingänge kurz
 geschlossen) und je eine Minute mit laufendem und mit ausgeschaltetem Display aufnehmen. Das Rauschen darf sich

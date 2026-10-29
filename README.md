@@ -12,12 +12,12 @@ Ein-Kanal-EKG (eine Ableitung) mit Desktop-Software für Linux (getestet für Fe
 | [PLAN.md](PLAN.md) | Plan, Entscheidungen, Meilensteine |
 | [docs/AUFBAU.md](docs/AUFBAU.md) | Steckplan, Elektroden, Sicherheit |
 | [docs/breadboard.svg](docs/breadboard.svg) | Steckplan als Grafik |
-| [docs/breadboard_display.svg](docs/breadboard_display.svg) | Steckplan mit Display (Phase 2, Vorschlag) |
+| [docs/verdrahtung.svg](docs/verdrahtung.svg) | Verdrahtung ohne Breadboard, mit Display |
 | [docs/KALIBRIERUNG.md](docs/KALIBRIERUNG.md) | Verstärkung und Frequenzgang messen |
 | [docs/PROTOKOLL.md](docs/PROTOKOLL.md) | USB-Protokoll Gerät ↔ Laptop |
 | `firmware/` | Pico-2-Firmware (C, Pico SDK 2.2) |
 | `host/` | Laptop-Software (Python, PySide6, pyqtgraph) |
-| `tools/` | MIT-BIH-Benchmark, Steckplan-Generator |
+| `tools/` | MIT-BIH-Benchmark, Generatoren für Steckplan und Verdrahtung |
 
 ## Installation unter Fedora
 
