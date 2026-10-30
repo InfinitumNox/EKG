@@ -6,6 +6,7 @@ Kurvenwerte kleine Toleranzen, Zählungen und Hinweise müssen genau stimmen.
 """
 
 import ctypes
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -103,6 +104,14 @@ int t_run(const unsigned short *raw4, const unsigned char *flags, int n_blocks, 
     PUT("d.p_amp_mv=%.17g", d->p_amp_mv);
     PUT("d.r_amp_mv=%.17g", d->r_amp_mv);
     PUT("d.t_amp_mv=%.17g", d->t_amp_mv);
+    PUT("rhythm.valid=%d", res.rhythm.valid);
+    PUT("rhythm.median_hr=%.17g", res.rhythm.median_hr);
+    PUT("rhythm.has_irr=%d", res.rhythm.has_irr);
+    PUT("rhythm.windows=%d", res.rhythm.windows);
+    PUT("rhythm.irregular_windows=%d", res.rhythm.irregular_windows);
+    PUT("rhythm.n_ect=%d", res.rhythm.n_ect);
+    PUT("rhythm.n_err=%d", res.rhythm.n_err);
+    PUT("rhythm.resp=%d", res.rhythm.resp_variation);
     for (int i = 0; i < res.n_hints; i++) PUT("hint=%s", res.hints[i]);
     for (int i = 0; i < res.n_qnotes; i++) PUT("qnote=%s", res.qnotes[i]);
     for (int i = 0; i < res.n_beats; i++) r_index[i] = res.r_index[i];
@@ -277,6 +286,27 @@ def test_analysis_matches_python(lib, name, scenario, kw):
         len(e.not_premature),
     )
     assert c["hint"] == py.hints
+
+    # Rhythmus in Zahlen (Grundlage der Check-Liste des Geräts) passt zu den Hinweistexten
+    for hint in py.hints:
+        if m := re.match(r"(\d+) vorzeitige Schläge", hint):
+            assert c["rhythm.n_ect"] == int(m.group(1))
+        if m := re.match(r"Herzfrequenz (?:niedrig|hoch) \((\d+)/min\)", hint):
+            assert round(c["rhythm.median_hr"]) == int(m.group(1))
+        if "über weite Strecken zufällig" in hint:
+            assert c["rhythm.has_irr"] and 2 * c["rhythm.irregular_windows"] >= c["rhythm.windows"]
+        elif "zeitweise zufällig" in hint:
+            assert (
+                0 < c["rhythm.irregular_windows"]
+                and 2 * c["rhythm.irregular_windows"] < c["rhythm.windows"]
+            )
+        if hint.startswith("Herzfrequenz schwankt stark"):
+            assert c["rhythm.resp"] == 1
+        if "vermutete Erkennungsfehler" in hint:
+            assert c["rhythm.n_err"] >= 3
+    assert bool(c["rhythm.resp"]) == any(h.startswith("Herzfrequenz schwankt") for h in py.hints)
+    if py.hints:
+        assert c["rhythm.valid"] == 1
 
     # Median-Schlag und Vermessung
     mb, dl = py.median, py.delineation

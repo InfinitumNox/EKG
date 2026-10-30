@@ -7,6 +7,8 @@
 //
 // app: spielt die Bedienung mit eingerichtetem Touch durch. Skript je Zeile:
 //   <t_ms> tap <x> <y> | long | swipe_l | swipe_r | shot <name>
+//   <t_ms> key <Taste> | type <Text>   (Tastatur; "_" im Text ist ein Leerzeichen,
+//                                        Tasten: Zeichen, Leer, OK, <, ^)
 //
 // „tag“ wählt das helle Farbschema (sonst das dunkle), „hochkant“ 240 × 320 statt quer.
 //
@@ -56,6 +58,33 @@ typedef struct {
 
 static bool portrait;
 
+// Tasten der Bildschirmtastatur antippen (Mitte der Taste, wie ein Finger)
+static void press_keys(const canvas_t *c, bool single, const char *s, uint32_t t) {
+    while (*s) {
+        char label[8] = {0};
+        size_t n = strlen(s);
+        if (!single) {
+            unsigned char b = (unsigned char)*s;
+            n = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : b >= 0xC0 ? 2 : 1;
+            memcpy(label, s, n < sizeof label ? n : sizeof label - 1);
+            if (label[0] >= 'A' && label[0] <= 'Z') {
+                label[0] = (char)(label[0] + 32);  // Umschalter setzt die Tastatur selbst
+            } else if (label[0] == '_') {
+                snprintf(label, sizeof label, "Leer");
+            }
+        } else {
+            snprintf(label, sizeof label, "%s", s);
+        }
+        int x, y;
+        if (!kb_key_center(&app.kb, c->w, c->h, label, &x, &y)) {
+            fprintf(stderr, "Taste fehlt: %s\n", label);
+            exit(1);
+        }
+        app_event(&app, (ui_event_t){EV_TAP, x, y, 0, 0, true}, t);
+        s += n;
+    }
+}
+
 static int run_app(const char *bins, const char *prefix, const char *script, const char *ver) {
     FILE *f = fopen(bins, "rb");
     FILE *sf = fopen(script, "r");
@@ -76,7 +105,8 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
         st->t = t;
         if (strcmp(st->what, "tap") == 0) {
             sscanf(line, "%*u %*s %d %d", &st->x, &st->y);
-        } else if (strcmp(st->what, "shot") == 0) {
+        } else if (strcmp(st->what, "shot") == 0 || strcmp(st->what, "key") == 0 ||
+                   strcmp(st->what, "type") == 0) {
             sscanf(line, "%*u %*s %63s", st->name);
         }
         ns++;
@@ -88,6 +118,7 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
     ui.look = g_theme == &THEME_DAY ? 0 : 1;
     ui.rotation = portrait ? 1 : 0;
     ui.speed = MON_SPEED_25;
+    ui.person = PERSON_GUEST;
     app.c = &c;
     app.mon = &mon;
     app.rec = &rec;
@@ -132,6 +163,9 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
                 ev.type = EV_SWIPE_LEFT;
             } else if (strcmp(st->what, "swipe_r") == 0) {
                 ev.type = EV_SWIPE_RIGHT;
+            } else if (strcmp(st->what, "key") == 0 || strcmp(st->what, "type") == 0) {
+                press_keys(&c, st->what[0] == 'k', st->name, t);
+                continue;
             } else if (strcmp(st->what, "shot") == 0) {
                 char path[512];
                 snprintf(path, sizeof path, "%s_%s.ppm", prefix, st->name);

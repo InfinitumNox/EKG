@@ -159,10 +159,11 @@ gedrückt halten.
 | Wo | Bedienung |
 |---|---|
 | Live-Ansicht | Tippen öffnet das Menü |
-| Menü | **Messen & auswerten**, Letztes Ergebnis, Einstellungen, Schließen |
+| Menü | **Messen & auswerten**, Letztes Ergebnis, Einstellungen, **Person** (Profil wählen) |
 | Einstellungen | Zeile antippen schaltet weiter: Anzeige, Ausrichtung, Verstärkung, Vorschub; dazu Touch einrichten und Info |
 | während der Messung | **Stopp** oben rechts beendet und wertet aus (ab 30 s) |
 | Ergebnis | ‹ › oder wischen: Seiten · Kurve · Neu messen |
+| Check | Zeile antippen: Erklärung; dort wischen: nächster Punkt, tippen: zurück |
 
 | Einstellung | Werte | Bedeutung |
 |---|---|---|
@@ -176,13 +177,48 @@ Eichzacke links ist 1 mV hoch (bei großer Verstärkung 0,5 mV). Die Verstärkun
 am linken Rand neu beginnt.
 
 **Messen & auswerten:** Die Messung läuft 2 Minuten, oben stehen Zeit und Fortschritt. Danach wertet der Pico
-die Aufnahme selbst aus. Die Ergebnisse stehen auf fünf Seiten:
+die Aufnahme selbst aus. Die Ergebnisse stehen auf sechs Seiten:
 
-1. **Übersicht:** Herzfrequenz Ø, min, max, Dauer, Schläge, wichtigster Rhythmus-Hinweis, Signalqualität.
-2. **Verlauf:** Schlagabstände über die Zeit; nicht gewertete (Extraschlag, Störung) sind rot markiert.
-3. **HRV:** RMSSD, SDNN, pNN50, SD1/SD2, LF/HF, Schwankung pro Minute.
-4. **Schlagform:** typischer Schlag (Median) mit P, Q, S, T und PR, QRS, QT, QTc (Fridericia).
-5. **Hinweise:** alle Rhythmus- und Signalhinweise im Wortlaut.
+1. **Übersicht:** Herzfrequenz Ø, min, max, Dauer, Schläge, Zusammenfassung des Checks, Signalqualität.
+   Ein Tipp auf die Zeile „Check“ öffnet die Check-Seite.
+2. **Check:** Liste der neun Punkte mit Ampel (siehe unten).
+3. **Verlauf:** Schlagabstände über die Zeit; nicht gewertete (Extraschlag, Störung) sind rot markiert.
+4. **HRV:** RMSSD, SDNN, pNN50, SD1/SD2, LF/HF, Schwankung pro Minute.
+5. **Schlagform:** typischer Schlag (Median) mit P, Q, S, T und PR, QRS, QT, QTc (Fridericia).
+6. **Hinweise:** alle Rhythmus- und Signalhinweise im Wortlaut.
+
+#### Check-Liste und Profile
+
+Die Check-Seite sagt, ob ein Wert im üblichen Bereich liegt, und erklärt jeden Punkt in Alltagssprache
+(Antippen). Die Symbole unterscheiden sich auch in der Form: Haken = im üblichen Bereich, Dreieck = beachten,
+Ausrufezeichen = ärztlich abklären, „i“ = nur Information, leerer Kreis = nicht bewertbar.
+
+| Punkt | im üblichen Bereich | beachten | ärztlich abklären |
+|---|---|---|---|
+| Signal | sauber | leicht oder stark gestört, unsicher erkannte Schläge | – (Qualität ist nie „abklären“) |
+| Puls in Ruhe | 50–100 /min | 40–49, 101–120 | unter 40, über 120 |
+| Rhythmus | gleichmäßig (Atemschwankung ist normal) | zeitweise zufällig unregelmäßig | über weite Strecken unregelmäßig |
+| Extraschläge | keine oder vereinzelt | mehrere (ab 3 und 1 %) | mehr als 10 % der Schläge |
+| P-Welle | erkannt | – | – (nicht erkennbar = nicht bewertbar, mit einer Ableitung häufig) |
+| PR-Zeit | 120–200 ms | darunter oder darüber | – |
+| QRS-Breite | unter 110 ms | 110–119 ms | ab 120 ms |
+| QT-Zeit (QTc nach Fridericia) | unter 450 ms (Frauen unter 460 ms); ab 340 ms | länger, kürzer als 340 ms | ab 500 ms |
+| HRV | nur Information (RMSSD, Erwachsene in Ruhe typisch etwa 20–75 ms) | – | – |
+
+Das sind die üblichen Grenzen für Erwachsene in Ruhe. Mit einer Ableitung und 0,5–40 Hz sind PR, QRS und QT
+Näherungen; die Check-Liste ist **keine Diagnose** und ersetzt keine ärztliche Untersuchung. Bei Brustschmerz,
+Atemnot oder Ohnmacht gilt der Notruf 112, unabhängig vom Gerät.
+
+**Profile (Menü → Person):** Zwei Profile und „Gast“. Ein Profil hat Name (bis 12 Zeichen), Alter, Geschlecht,
+Größe und Gewicht, eingegeben über die Bildschirmtastatur (Namen mit Umlauten, Zahlen mit Ziffernblock;
+Kreuz oben rechts bricht ab, leeres Zahlenfeld heißt „keine Angabe“). Ein neues Profil wird gleich gewählt.
+Die Angaben bleiben nach dem Ausschalten erhalten und wirken so:
+
+- **Alter unter 18:** Puls, PR, QRS und QT werden nicht bewertet (die Grenzen gelten für Erwachsene).
+- **Geschlecht:** nur für die QT-Grenze (Frauen 460 ms, sonst 450 ms; ohne Angabe gilt 450 ms).
+- **Größe und Gewicht:** gehen nicht in die Bewertung ein; auf der Profilseite steht daraus nur der BMI.
+- Das Alter zählt das Gerät nicht selbst weiter (keine Uhr): bei Bedarf von Hand ändern.
+- Die Person wird beim Start der Messung festgehalten; die Check-Seite nennt sie.
 
 Das letzte Ergebnis bleibt bis zur nächsten Messung abrufbar, aber nicht über das Ausschalten hinaus. Für
 Aufnahmen, die man behalten will, gibt es weiter die Laptop-Software. Gerechnet wird mit denselben Verfahren

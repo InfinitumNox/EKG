@@ -95,6 +95,18 @@ typedef struct {
     double t_amp_mv;
 } ana_delineation_t;
 
+// Rhythmus in Zahlen (Grundlage der Hinweise; die Check-Seite des Geräts bewertet damit)
+typedef struct {
+    bool valid;  // genug Schläge (mind. 20, davon 15 gültige Intervalle)
+    double median_hr;  // Herzfrequenz aus dem Median der Intervalle
+    bool has_irr;  // Unregelmäßigkeit bestimmbar
+    int windows;  // Fenster, die auf Unregelmäßigkeit geprüft wurden
+    int irregular_windows;  // davon zufällig unregelmäßig
+    int n_ect;  // vorzeitige Schläge (nach QRS-Form bestätigt)
+    int n_err;  // vermutete verpasste und zusätzliche Schläge
+    bool resp_variation;  // gleichmäßige, atemabhängige Schwankung
+} ana_rhythm_t;
+
 typedef struct {
     bool ok;  // Aufnahme lang genug
     int n_samples;
@@ -127,6 +139,7 @@ typedef struct {
     bool has_delineation;
     ana_delineation_t d;
 
+    ana_rhythm_t rhythm;
     int n_hints;
     char hints[ANA_MAX_HINTS][ANA_TEXT];
     int n_qnotes;

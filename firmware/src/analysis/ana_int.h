@@ -54,6 +54,6 @@ typedef struct {
 
 bool ana_irregularity(const double *rr, int n, const bool *bad, ana_irregularity_t *out,
                       ana_arena_t *a);
-// Hinweise wie ekg.dsp.hrv.rhythm_hints; ectopy darf NULL sein
+// Hinweise wie ekg.dsp.hrv.rhythm_hints; ectopy und rh dürfen NULL sein
 int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ectopy_t *ectopy,
-                     char hints[][ANA_TEXT], int max_hints, ana_arena_t *a);
+                     char hints[][ANA_TEXT], int max_hints, ana_arena_t *a, ana_rhythm_t *rh);

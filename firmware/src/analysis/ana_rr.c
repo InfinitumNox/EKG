@@ -602,7 +602,10 @@ static void add_hint(char hints[][ANA_TEXT], int *n, int max, const char *text) 
 }
 
 int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ectopy_t *ectopy,
-                     char hints[][ANA_TEXT], int max_hints, ana_arena_t *a) {
+                     char hints[][ANA_TEXT], int max_hints, ana_arena_t *a, ana_rhythm_t *rh) {
+    if (rh) {
+        memset(rh, 0, sizeof *rh);
+    }
     if (n_t < 20) {
         return 0;
     }
@@ -632,6 +635,10 @@ int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ecto
     int nh = 0;
     char buf[ANA_TEXT];
     double hr = 60.0 / ana_median(tmp, n_hard, tmp);
+    if (rh) {
+        rh->valid = true;
+        rh->median_hr = hr;
+    }
     if (hr < 50) {
         snprintf(buf, sizeof buf, "Herzfrequenz niedrig (%ld/min)", (long)ana_round(hr));
         add_hint(hints, &nh, max_hints, buf);
@@ -647,6 +654,11 @@ int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ecto
     ana_irregularity_t irr;
     bool has_irr = ana_irregularity(rr, n, bad, &irr, a);
     double fraction = has_irr && irr.windows ? (double)irr.irregular_windows / irr.windows : 0.0;
+    if (rh && has_irr) {
+        rh->has_irr = true;
+        rh->windows = irr.windows;
+        rh->irregular_windows = irr.irregular_windows;
+    }
     if (has_irr && fraction >= 0.5) {
         add_hint(hints, &nh, max_hints,
                  "Rhythmus über weite Strecken zufällig unregelmäßig – bei wiederholtem Befund "
@@ -656,6 +668,9 @@ int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ecto
     }
     bool mostly_irregular = has_irr && fraction >= 0.5;
     int n_ect = ectopy ? ectopy->normal_qrs + ectopy->other_qrs : cls.n_ectopic;
+    if (rh) {
+        rh->n_ect = n_ect;
+    }
     if (!mostly_irregular && n_ect >= 3 && (n_ect >= 10 || n_ect >= 0.01 * n)) {
         int len = snprintf(buf, sizeof buf, "%d vorzeitige Schläge mit nachfolgender Pause", n_ect);
         if (ectopy && ectopy->other_qrs && len > 0 && len < (int)sizeof buf) {
@@ -665,6 +680,9 @@ int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ecto
         add_hint(hints, &nh, max_hints, buf);
     }
     int n_err = cls.n_missed + cls.n_extra;
+    if (rh) {
+        rh->n_err = n_err;
+    }
     if (n_err >= 3) {
         snprintf(buf, sizeof buf,
                  "%d vermutete Erkennungsfehler (verpasste/zusätzliche Schläge) – Signal prüfen",
@@ -696,6 +714,9 @@ int ana_rhythm_hints(const double *t, int n_t, ana_invalid_t inv, const ana_ecto
                 add_hint(hints, &nh, max_hints,
                          "Herzfrequenz schwankt stark, aber gleichmäßig (Atmung und "
                          "Kreislaufregulation – in Ruhe normal)");
+                if (rh) {
+                    rh->resp_variation = true;
+                }
             }
         }
     }

@@ -1,7 +1,8 @@
-// Bedienung auf dem Gerät: Live-Ansicht, Menü, Einstellungen, Messung mit Auswertung,
-// Ergebnisseiten, Touch-Einrichtung und Info, quer (320 × 240) und hochkant (240 × 320). Ohne Hardware-Bezug: Der Display-Task liefert Messblöcke und
-// Touch-Ereignisse und führt die Anforderungen (req_*) aus; die Vorschau am Laptop nutzt
-// denselben Code.
+// Bedienung auf dem Gerät: Live-Ansicht, Menü, Personenprofile mit Tastatur, Einstellungen,
+// Messung mit Auswertung, Ergebnisseiten mit Check-Liste, Touch-Einrichtung und Info, quer
+// (320 × 240) und hochkant (240 × 320). Ohne Hardware-Bezug: Der Display-Task liefert
+// Messblöcke und Touch-Ereignisse und führt die Anforderungen (req_*) aus; die Vorschau am
+// Laptop nutzt denselben Code.
 
 #pragma once
 
@@ -9,9 +10,12 @@
 #include <stdint.h>
 
 #include "ana.h"
+#include "check.h"
 #include "gesture.h"
 #include "gfx.h"
+#include "keyboard.h"
 #include "monitor.h"
+#include "profile.h"
 #include "settings.h"
 
 typedef enum {
@@ -22,9 +26,15 @@ typedef enum {
     APP_RESULT,
     APP_CAL,
     APP_INFO,
+    APP_PROFILES,      // Person wählen
+    APP_PROFILE_EDIT,  // Angaben eines Profils
+    APP_KEYBOARD,      // Eingabe für ein Feld des Profils
+    APP_CHECK_DETAIL,  // Erklärung zu einem Punkt der Check-Liste
 } app_screen_t;
 
-#define APP_PAGES 5
+// Übersicht, Check, Verlauf, HRV, Schlagform, Hinweise
+#define APP_PAGES 6
+#define PAGE_CHECK 1
 
 typedef struct {
     // vom Display-Task gesetzt
@@ -53,6 +63,19 @@ typedef struct {
     ana_status_t result_status;
     bool result_test;
     int page;
+
+    // Person der laufenden Messung (Schnappschuss, damit die Bewertung zu ihr passt)
+    profile_t meas_profile;
+    bool meas_known;  // false: Gast
+    check_item_t checks[CHK_MAX];
+    int n_checks;
+    int detail;  // gewählter Punkt der Check-Liste
+
+    // Profile
+    int edit_idx;
+    bool edit_new;
+    int kb_field;
+    kb_t kb;
 
     // Status
     bool usb, streaming;

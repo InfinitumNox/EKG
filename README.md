@@ -104,6 +104,10 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
   Rhythmus-Hinweise, typischer Schlag mit PR/QRS/QT und Signalqualität direkt auf dem Display. Die Verfahren
   sind aus der Laptop-Software nach C übertragen und gegen die Python-Fassung getestet. Bedienung in
   [docs/AUFBAU.md](docs/AUFBAU.md).
+- **Check-Liste und Profile:** Eine Ergebnisseite ordnet neun Punkte (Signal, Puls, Rhythmus, Extraschläge,
+  P-Welle, PR, QRS, QT, HRV) mit Ampel ein und erklärt sie in Alltagssprache. Zwei Profile (Name, Alter,
+  Geschlecht, Größe, Gewicht) mit Bildschirmtastatur; Alter und Geschlecht bestimmen, welche Grenzen gelten.
+  Keine Diagnose.
 - **Kommandozeile:** `ekg-record --duration 300` (ohne Oberfläche), `ekg-export aufnahme.ekgrec --pdf b.pdf`.
 
 Aufnahmen liegen in `~/.local/share/ekg/aufnahmen/`, Einstellungen und Kalibrierungen in `~/.config/ekg/`.

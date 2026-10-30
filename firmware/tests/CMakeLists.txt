@@ -22,11 +22,15 @@ add_executable(test_ui
     test_ui.c
     ../src/ui/app.c
     ../src/ui/assets.c
+    ../src/ui/check.c
     ../src/ui/gesture.c
     ../src/ui/gfx.c
+    ../src/ui/keyboard.c
     ../src/ui/monitor.c
+    ../src/ui/profile.c
     ../src/ui/theme.c
     ../src/ui/touchcal.c
+    ../src/display/settings_codec.c
     ../src/ecg/hr.c
     ../src/ecg/qrs.c
     ../src/ecg/sosf.c

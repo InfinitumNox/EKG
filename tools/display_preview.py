@@ -82,35 +82,61 @@ def main() -> None:
         g = SyntheticEcg(FS, scenario=Scenario.REST, seed=6, amplitude=0.8, mains_mv=0.03)
         mv = g.generate(FS * 140)
         blocks_file(tmp / "a.bin", mv, np.zeros(len(mv), dtype=np.uint8))
-        # Tippstellen je Ausrichtung: Menü öffnen, Messen, Weiter, Kurve, Einstellungen, Zeilen
+        # Vorhofflimmern: Check-Liste mit rotem und gelbem Punkt
+        g = SyntheticEcg(FS, scenario=Scenario.AF, seed=8, amplitude=0.8, mains_mv=0.03)
+        mv = g.generate(FS * 140)
+        blocks_file(tmp / "af.bin", mv, np.zeros(len(mv), dtype=np.uint8))
+        # Tippstellen je Ausrichtung (Menü, Person, Profil anlegen, Messen, Seiten, Einstellungen)
         spots = {
-            "quer": {"menu": "160 120", "measure": "160 69", "next": "292 222", "live": "100 222",
+            "quer": {"menu": "160 120", "person": "160 206", "prof0": "100 58",
+                     "age": "100 73", "sex": "100 103", "height": "100 133",
+                     "weight": "100 163", "done": "240 218", "close": "310 12",
+                     "measure": "160 69", "next": "292 222", "live": "100 222",
+                     "check_row": "160 57", "rhythm_row": "160 75", "back": "160 120",
                      "settings": "160 166", "row_touch": "160 178", "row_info": "160 213"},
-            "hochkant": {"menu": "120 160", "measure": "120 100", "next": "220 300",
-                         "live": "70 300", "settings": "120 200", "row_touch": "120 214",
-                         "row_info": "120 258"},
+            "hochkant": {"menu": "120 160", "person": "120 252", "prof0": "100 65",
+                         "age": "100 88", "sex": "100 128", "height": "100 168",
+                         "weight": "100 208", "done": "180 290", "close": "220 12",
+                         "measure": "120 100", "next": "220 300", "live": "70 300",
+                         "check_row": "120 84", "rhythm_row": "120 107", "back": "120 160",
+                         "settings": "120 200", "row_touch": "120 214", "row_info": "120 258"},
         }  # fmt: skip
         for orient, sp in spots.items():
             script = [
                 "2500 shot live", f"3000 tap {sp['menu']}", "3300 shot menu",
-                f"3500 tap {sp['measure']}", "45000 shot messung",
-                "125500 shot seite1", f"125600 tap {sp['next']}", "125700 shot seite2",
-                f"125800 tap {sp['next']}", "125900 shot seite3", f"126000 tap {sp['next']}",
-                "126100 shot seite4", f"126200 tap {sp['next']}", "126300 shot seite5",
-                f"126400 tap {sp['live']}", f"127000 tap {sp['menu']}",
-                f"127200 tap {sp['settings']}", "127300 shot einstellungen",
-                f"127400 tap {sp['row_touch']}", "127500 shot einrichten", "127600 long",
-                f"128000 tap {sp['menu']}", f"128200 tap {sp['settings']}",
-                f"128300 tap {sp['row_info']}", "128400 shot info",
+                f"3500 tap {sp['person']}", "3800 shot personen", f"4000 tap {sp['prof0']}",
+                "4300 shot tastatur_leer", "4400 type Sophie", "4600 shot tastatur_name",
+                "4700 key OK", f"4900 tap {sp['age']}", "5100 shot zahlen", "5200 type 41",
+                "5300 key OK", f"5400 tap {sp['sex']}", f"5500 tap {sp['sex']}",
+                f"5600 tap {sp['height']}", "5700 type 168", "5800 key OK",
+                f"5900 tap {sp['weight']}", "6000 type 62", "6100 key OK", "6300 shot profil",
+                f"6400 tap {sp['done']}", "6500 shot personen2", f"6600 tap {sp['close']}",
+                f"6800 tap {sp['measure']}", "45000 shot messung",
+                "127500 shot seite1", f"127600 tap {sp['next']}", "127700 shot seite2",
+                f"127800 tap {sp['check_row']}", "127900 shot detail",
+                f"128000 tap {sp['back']}", f"128100 tap {sp['next']}", "128200 shot seite3",
+                f"128300 tap {sp['next']}", "128400 shot seite4", f"128500 tap {sp['next']}",
+                "128600 shot seite5", f"128700 tap {sp['next']}", "128800 shot seite6",
+                f"128900 tap {sp['live']}", f"129500 tap {sp['menu']}",
+                f"129700 tap {sp['settings']}", "129800 shot einstellungen",
+                f"129900 tap {sp['row_touch']}", "130000 shot einrichten", "130100 long",
+                f"130500 tap {sp['menu']}", f"130700 tap {sp['settings']}",
+                f"130800 tap {sp['row_info']}", "130900 shot info",
             ]  # fmt: skip
-            (tmp / "script.txt").write_text("\n".join(script) + "\n")
+            af_script = [
+                f"3000 tap {sp['menu']}", f"3500 tap {sp['measure']}", "123900 shot af_uebersicht",
+                f"124000 tap {sp['next']}", "124100 shot af_check",
+                f"124200 tap {sp['rhythm_row']}", "124300 shot af_detail",
+            ]  # fmt: skip
             extra = [] if orient == "quer" else ["hochkant"]
             for theme, opt in (("nacht", []), ("tag", ["tag"])):
-                cmd = [exe, *opt, *extra, "app", str(tmp / "a.bin"), str(tmp / "app"),
-                       str(tmp / "script.txt")]  # fmt: skip
-                subprocess.run(cmd, check=True)
-                for name in [line.split()[2] for line in script if " shot " in line]:
-                    to_png(tmp / f"app_{name}.ppm", out / f"{theme}_{orient}_{name}.png")
+                for src, lines in (("a.bin", script), ("af.bin", af_script)):
+                    (tmp / "script.txt").write_text("\n".join(lines) + "\n")
+                    cmd = [exe, *opt, *extra, "app", str(tmp / src), str(tmp / "app"),
+                           str(tmp / "script.txt")]  # fmt: skip
+                    subprocess.run(cmd, check=True)
+                    for name in [line.split()[2] for line in lines if " shot " in line]:
+                        to_png(tmp / f"app_{name}.ppm", out / f"{theme}_{orient}_{name}.png")
             subprocess.run([exe, *extra, "splash", "3200", str(tmp / "s.ppm")], check=True)
             to_png(tmp / "s.ppm", out / f"nacht_{orient}_splash.png")
         for theme, opt in (("nacht", []), ("tag", ["tag"])):

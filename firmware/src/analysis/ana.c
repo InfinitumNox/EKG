@@ -189,7 +189,7 @@ ana_status_t ana_run(ana_recording_t *rec, ana_power_t power, qrs_detector_t *de
     out->ect_other_qrs = ect.other_qrs;
     out->ect_not_premature = ect.not_premature;
 
-    out->n_hints = ana_rhythm_hints(t, nb, inv, &ect, out->hints, ANA_MAX_HINTS, &a);
+    out->n_hints = ana_rhythm_hints(t, nb, inv, &ect, out->hints, ANA_MAX_HINTS, &a, &out->rhythm);
     out->ok = !a.failed;
     out->scratch_peak = (uint32_t)a.peak;
     return a.failed ? ANA_NO_MEMORY : ANA_OK;

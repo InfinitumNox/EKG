@@ -24,8 +24,8 @@ static const look_t LOOKS[] = {
 #define TOAST_MS 2600u
 #define HEADER_H 26
 
-static const char *PAGE_NAMES[APP_PAGES] = {"Übersicht", "Verlauf", "HRV", "Schlagform",
-                                             "Hinweise"};
+static const char *PAGE_NAMES[APP_PAGES] = {"Übersicht", "Check",      "Verlauf",
+                                             "HRV",       "Schlagform", "Hinweise"};
 
 typedef struct {
     int x, y, w, h;
@@ -179,7 +179,7 @@ static void draw_toast(app_t *a) {
 }
 
 // ------------------------------------------------------------------ Menü
-// 0 = Messen & auswerten, 1 = Letztes Ergebnis, 2 = Einstellungen, 3 = Schließen
+// 0 = Messen & auswerten, 1 = Letztes Ergebnis, 2 = Einstellungen, 3 = Person
 static box_t menu_panel(lay_t l) {
     return l.portrait ? (box_t){10, 40, l.w - 20, 244} : (box_t){12, 8, l.w - 24, 224};
 }
@@ -232,7 +232,10 @@ static void draw_menu(app_t *a, bool fresh_bg) {
     }
     button(c, menu_item(l, 1), "Letztes Ergebnis", false, a->has_result || a->result_status);
     button(c, menu_item(l, 2), "Einstellungen", false, true);
-    button(c, menu_item(l, 3), "Schließen", false, true);
+    const profile_t *who = settings_person(a->ui);
+    char label[PROFILE_NAME_BYTES + 12];
+    snprintf(label, sizeof label, "Person: %s", who ? who->name : "Gast");
+    button(c, menu_item(l, 3), label, false, true);
 }
 
 // ------------------------------------------------------------------ Einstellungen
@@ -279,6 +282,217 @@ static void draw_settings(app_t *a) {
     }
 }
 
+// ------------------------------------------------------------------ Profile
+// Person wählen (Profil 1, Profil 2, Gast) und die Angaben eines Profils bearbeiten
+enum { F_NAME, F_AGE, F_SEX, F_HEIGHT, F_WEIGHT, F_COUNT };
+
+static box_t prof_row(lay_t l, int i) {
+    const int rh = l.portrait ? 70 : 56;
+    return (box_t){0, HEADER_H + 4 + i * rh, l.w, rh};
+}
+
+static box_t prof_edit_box(lay_t l, int i) {
+    box_t r = prof_row(l, i);
+    return (box_t){l.w - 84, r.y, 84, r.h};
+}
+
+static box_t edit_row(lay_t l, int i) {
+    const int rh = l.portrait ? 40 : 30;
+    return (box_t){0, HEADER_H + 2 + i * rh, l.w, rh};
+}
+
+// 0 = Löschen, 1 = Fertig
+static box_t edit_button(lay_t l, int i) {
+    const int w = (l.w - 30) / 2, h = l.portrait ? 36 : 32;
+    return (box_t){10 + i * (w + 10), l.portrait ? l.h - 48 : l.h - 38, w, h};
+}
+
+static int active_person(const app_t *a) {
+    return settings_person(a->ui) ? a->ui->person : PERSON_GUEST;
+}
+
+static void draw_profiles(app_t *a) {
+    canvas_t *c = a->c;
+    lay_t l = lay(a);
+    gfx_fill(c, 0, 0, l.w, l.h, C_BG);
+    header(a, "Person", NULL);
+    for (int i = 0; i <= PERSON_GUEST; i++) {
+        const box_t r = prof_row(l, i);
+        const bool guest = i == PERSON_GUEST;
+        const profile_t *p = guest ? NULL : &a->ui->profiles[i];
+        const bool used = guest || profile_used(p);
+        const bool active = active_person(a) == i;
+        const float cx = 24.0f, cy = (float)r.y + (float)r.h / 2.0f;
+        gfx_disc(c, cx, cy, 9.0f, active ? C_ACCENT : C_TEXT_FAINT, OPAQUE);
+        gfx_disc(c, cx, cy, 7.0f, C_BG, OPAQUE);
+        if (active) {
+            gfx_disc(c, cx, cy, 4.2f, C_ACCENT, OPAQUE);
+        }
+        const int base = r.y + r.h / 2 - 3;
+        if (!used) {
+            gfx_text(c, &FONT_LABEL, 46, r.y + r.h / 2 + 6, "Profil anlegen", C_TEXT_DIM, OPAQUE);
+            gfx_text(c, &FONT_LABEL, l.w - 26, r.y + r.h / 2 + 6, "+", C_ACCENT, OPAQUE);
+        } else {
+            char sum[64];
+            if (guest) {
+                snprintf(sum, sizeof sum, "ohne Angaben");
+            } else {
+                profile_summary(p, sum, sizeof sum);
+            }
+            gfx_text(c, &FONT_LABEL, 46, base, guest ? "Gast" : p->name, C_TEXT, OPAQUE);
+            gfx_text(c, &FONT_SMALL, 46, base + 19, sum, C_TEXT_DIM, OPAQUE);
+            if (!guest) {
+                const char *edit = "Ändern ›";
+                gfx_text(c, &FONT_SMALL, l.w - 12 - gfx_text_width(&FONT_SMALL, edit),
+                         r.y + r.h / 2 + 5, edit, C_ACCENT, OPAQUE);
+            }
+        }
+        gfx_fill(c, 10, r.y + r.h - 1, l.w - 20, 1, C_PANEL_EDGE);
+    }
+    const box_t last = prof_row(l, PERSON_GUEST);
+    text_center(c, &FONT_SMALL, l.w / 2, last.y + last.h + 18, "Antippen: Person wählen",
+                C_TEXT_FAINT);
+}
+
+static void draw_profile_edit(app_t *a) {
+    canvas_t *c = a->c;
+    lay_t l = lay(a);
+    const profile_t *p = &a->ui->profiles[a->edit_idx];
+    gfx_fill(c, 0, 0, l.w, l.h, C_BG);
+    char title[24];
+    snprintf(title, sizeof title, "Profil %d", a->edit_idx + 1);
+    header(a, title, NULL);
+    static const char *const LABELS[F_COUNT] = {"Name", "Alter", "Geschlecht", "Größe",
+                                                "Gewicht"};
+    for (int i = 0; i < F_COUNT; i++) {
+        const box_t r = edit_row(l, i);
+        char v[PROFILE_NAME_BYTES + 8] = "";
+        switch (i) {
+            case F_NAME:
+                snprintf(v, sizeof v, "%s", p->name);
+                break;
+            case F_AGE:
+                if (p->age) {
+                    snprintf(v, sizeof v, "%u Jahre", p->age);
+                }
+                break;
+            case F_SEX:
+                snprintf(v, sizeof v, "%s",
+                         p->sex == SEX_MALE ? "männlich" : p->sex == SEX_FEMALE ? "weiblich" : "");
+                break;
+            case F_HEIGHT:
+                if (p->height_cm) {
+                    snprintf(v, sizeof v, "%u cm", p->height_cm);
+                }
+                break;
+            default:
+                if (p->weight_kg) {
+                    snprintf(v, sizeof v, "%u kg", p->weight_kg);
+                }
+                break;
+        }
+        const int base = r.y + r.h / 2 + 6;
+        gfx_text(c, &FONT_LABEL, 14, base, LABELS[i], C_TEXT, OPAQUE);
+        const bool set = v[0] != '\0';
+        const char *shown = set ? v : "–";
+        gfx_text(c, &FONT_SMALL, l.w - 14 - gfx_text_width(&FONT_SMALL, shown), base - 1, shown,
+                 set ? C_ACCENT : C_TEXT_FAINT, OPAQUE);
+        gfx_fill(c, 10, r.y + r.h - 1, l.w - 20, 1, C_PANEL_EDGE);
+    }
+    const int bmi = profile_bmi10(p);
+    if (bmi >= 0) {
+        char b[48];
+        snprintf(b, sizeof b, "BMI %d,%d (nur zur Info)", bmi / 10, bmi % 10);
+        gfx_text(c, &FONT_SMALL, 14, edit_row(l, F_COUNT).y + 16, b, C_TEXT_DIM, OPAQUE);
+    }
+    button(c, edit_button(l, 0), "Löschen", false, profile_used(p));
+    button(c, edit_button(l, 1), "Fertig", true, true);
+}
+
+static void back_to_menu(app_t *a) {
+    a->screen = APP_MENU;
+    a->mon->draw = false;
+    redraw(a);
+}
+
+static void open_field(app_t *a, int field) {
+    const profile_t *p = &a->ui->profiles[a->edit_idx];
+    switch (field) {
+        case F_NAME:
+            kb_open_text(&a->kb, "Name", p->name, PROFILE_NAME_CHARS);
+            break;
+        case F_AGE:
+            kb_open_number(&a->kb, "Alter", "Jahre", p->age, 1, PROFILE_AGE_MAX);
+            break;
+        case F_HEIGHT:
+            kb_open_number(&a->kb, "Größe", "cm", p->height_cm, PROFILE_HEIGHT_MIN,
+                           PROFILE_HEIGHT_MAX);
+            break;
+        default:
+            kb_open_number(&a->kb, "Gewicht", "kg", p->weight_kg, PROFILE_WEIGHT_MIN,
+                           PROFILE_WEIGHT_MAX);
+            break;
+    }
+    a->kb_field = field;
+    a->screen = APP_KEYBOARD;
+    redraw(a);
+}
+
+static void keyboard_done(app_t *a) {
+    profile_t *p = &a->ui->profiles[a->edit_idx];
+    switch (a->kb_field) {
+        case F_NAME:
+            snprintf(p->name, sizeof p->name, "%s", a->kb.buf);
+            break;
+        case F_AGE:
+            p->age = (uint8_t)kb_value(&a->kb);
+            break;
+        case F_HEIGHT:
+            p->height_cm = (uint8_t)kb_value(&a->kb);
+            break;
+        default:
+            p->weight_kg = (uint8_t)kb_value(&a->kb);
+            break;
+    }
+    profile_sanitize(p);
+    a->req_save = true;
+}
+
+static void open_editor(app_t *a, int idx) {
+    a->edit_idx = idx;
+    a->edit_new = !profile_used(&a->ui->profiles[idx]);
+    if (a->edit_new) {  // neues Profil: gleich nach dem Namen fragen
+        profile_clear(&a->ui->profiles[idx]);
+        open_field(a, F_NAME);
+    } else {
+        a->screen = APP_PROFILE_EDIT;
+        redraw(a);
+    }
+}
+
+// Editor verlassen: ohne Namen gibt es kein Profil; ein neues Profil wird gleich gewählt
+static void close_editor(app_t *a) {
+    profile_t *p = &a->ui->profiles[a->edit_idx];
+    if (!profile_used(p)) {
+        profile_clear(p);
+        if (a->ui->person == a->edit_idx) {
+            a->ui->person = PERSON_GUEST;
+        }
+    } else if (a->edit_new) {
+        a->ui->person = (uint8_t)a->edit_idx;
+    }
+    a->edit_new = false;
+    a->req_save = true;
+    a->screen = APP_PROFILES;
+    redraw(a);
+}
+
+static void select_person(app_t *a, int person) {
+    a->ui->person = (uint8_t)person;
+    a->req_save = true;
+    back_to_menu(a);
+}
+
 // ------------------------------------------------------------------ Auswertung läuft
 static void draw_analyzing(app_t *a) {
     canvas_t *c = a->c;
@@ -310,7 +524,7 @@ static void result_frame(app_t *a) {
     gfx_fill(c, 0, 0, l.w, l.h, C_BG);
     header(a, "Ergebnis", PAGE_NAMES[a->page]);
     for (int i = 0; i < APP_PAGES; i++) {  // Seitenpunkte
-        float cx = (float)(l.w - 76) + (float)i * 9.0f;
+        float cx = (float)(l.w - 80) + (float)i * 9.0f;
         gfx_disc(c, cx, 13.0f, i == a->page ? 3.2f : 2.4f, i == a->page ? C_ACCENT : C_TEXT_FAINT,
                  OPAQUE);
     }
@@ -339,35 +553,27 @@ static void label_value(canvas_t *c, int x, int y, const char *label, const char
 }
 
 static const char *quality_line(const ana_result_t *r, uint32_t *col) {
-    *col = C_OK;
-    if (r->has_mains_ratio && r->mains_ratio > 0.5) {
-        *col = C_ACCENT;
-        return "starke 50-Hz-Störung";
-    }
-    if (r->masked_s > 10.0) {
-        *col = C_WARN;
-        return "teils unbrauchbar, ausgeblendet";
-    }
-    if (r->has_mains_ratio && r->mains_ratio > 0.1) {
-        *col = C_WARN;
-        return "leichte 50-Hz-Störung";
-    }
-    if (r->masked_s > 1.0) {
-        *col = C_WARN;
-        return "kurze Störungen ausgeblendet";
-    }
-    return "gut";
+    const char *text;
+    *col = check_quality(r, &text) == 0 ? C_OK : C_WARN;
+    return text;
 }
 
-// kurze Fassung eines Rhythmus-Hinweises für die Übersicht (voll auf der Seite „Hinweise“)
-static const char *short_hint(const char *h) {
-    if (strncmp(h, "Herzfrequenz schwankt stark", 27) == 0) {
-        return "Herzfrequenz schwankt gleichmäßig mit der Atmung – in Ruhe normal";
+static uint32_t status_color(chk_status_t st) {
+    switch (st) {
+        case CHK_OK:
+            return C_OK;
+        case CHK_NOTE:
+            return C_WARN;
+        case CHK_ALERT:
+            return C_ACCENT;
+        default:
+            return C_TEXT_DIM;
     }
-    if (strncmp(h, "Rhythmus über weite Strecken", 29) == 0) {
-        return "Über weite Strecken zufällig unregelmäßig – ärztlich abklären";
-    }
-    return h;
+}
+
+// Zeile „Check“ der Übersicht beginnt hier (Tippen führt zur Check-Seite)
+static int overview_check_y(lay_t l) {
+    return l.portrait ? 180 : 124;
 }
 
 static void page_overview(app_t *a) {
@@ -400,25 +606,25 @@ static void page_overview(app_t *a) {
     gfx_text(c, &FONT_SMALL, sx, syl, "Schläge", C_TEXT_DIM, OPAQUE);
     gfx_text(c, &FONT_LABEL, sx, syl + 20, buf, C_TEXT, OPAQUE);
 
-    const int ry = l.portrait ? 180 : 124;  // Trennlinie, darunter Rhythmus und Signal
-    const int max_lines = l.portrait ? 3 : 2;
+    const int ry = overview_check_y(l);  // Trennlinie, darunter Check und Signal
     gfx_fill(c, 12, ry, l.w - 24, 1, C_PANEL_EDGE);
-    gfx_text(c, &FONT_SMALL, 14, ry + 18, "Rhythmus", C_TEXT_DIM, OPAQUE);
-    const int ty = ry + 36;
+    gfx_text(c, &FONT_SMALL, 14, ry + 18, "Check", C_TEXT_DIM, OPAQUE);
+    if (a->touch_xy) {
+        gfx_text(c, &FONT_LABEL, l.w - 22, ry + 20, "›", C_TEXT_DIM, OPAQUE);
+    }
+    const int ty = ry + (l.portrait ? 42 : 38);
     if (a->result_test) {
         gfx_text(c, &FONT_SMALL, 14, ty, "Testsignal – keine echte Messung", C_WARN, OPAQUE);
-    } else if (r->n_hints) {
-        int lines = gfx_text_wrap(c, &FONT_SMALL, 14, ty, l.w - 28, 16, short_hint(r->hints[0]),
-                                  C_TEXT, max_lines);
-        if (r->n_hints > 1 && lines < max_lines) {
-            char more[48];
-            snprintf(more, sizeof more, "+%d weitere Hinweise", r->n_hints - 1);
-            gfx_text(c, &FONT_SMALL, 14, ty + lines * 16, more, C_TEXT_FAINT, OPAQUE);
-        }
-    } else if (r->n_beats >= 20) {
-        gfx_text(c, &FONT_SMALL, 14, ty, "Keine Auffälligkeiten", C_OK, OPAQUE);
     } else {
-        gfx_text(c, &FONT_SMALL, 14, ty, "zu kurz für eine Aussage", C_TEXT_DIM, OPAQUE);
+        const check_summary_t sum = check_summarize(a->checks, a->n_checks);
+        char line[64];
+        check_summary_text(&sum, line, sizeof line);
+        const uint32_t col = sum.rated < 3 ? C_TEXT_DIM
+                             : sum.alert    ? C_ACCENT
+                             : sum.note     ? C_WARN
+                                            : C_OK;
+        gfx_disc(c, 22.0f, (float)ty - 5.0f, 5.0f, col, OPAQUE);
+        gfx_text_wrap(c, &FONT_LABEL, 34, ty, l.w - 48, 20, line, C_TEXT, 2);
     }
     uint32_t col;
     const char *q = quality_line(r, &col);
@@ -432,7 +638,7 @@ static void page_trend(app_t *a) {
     canvas_t *c = a->c;
     const ana_result_t *r = a->res;
     lay_t l = lay(a);
-    const int px0 = l.portrait ? 40 : 44, px1 = l.w - 10, py0 = 38;
+    const int px0 = l.portrait ? 40 : 44, px1 = l.w - 16, py0 = 38;
     const int py1 = l.portrait ? l.footer_y - 56 : l.footer_y - 34;
     if (r->n_beats < 3) {
         text_center(c, &FONT_SMALL, l.w / 2, l.h / 2, "zu wenige Schläge", C_TEXT_DIM);
@@ -633,8 +839,9 @@ static void page_notes(app_t *a) {
     canvas_t *c = a->c;
     const ana_result_t *r = a->res;
     lay_t l = lay(a);
-    const char *foot = "Keine Diagnose. Intervalle sind Näherungen.";
-    int foot_lines = gfx_text_wrap(NULL, &FONT_SMALL, 0, 0, l.w - 28, 16, foot, C_TEXT, 2);
+    const char *foot = "Keine Diagnose. Intervalle sind Näherungen. Bei Brustschmerz, Atemnot "
+                       "oder Ohnmacht: Notruf 112.";
+    int foot_lines = gfx_text_wrap(NULL, &FONT_SMALL, 0, 0, l.w - 28, 16, foot, C_TEXT, 4);
     int y = 46;
     const int max_y = l.footer_y - 6 - foot_lines * 16 - 6;
     const char *texts[ANA_MAX_HINTS + ANA_MAX_QNOTES + 2];
@@ -658,7 +865,113 @@ static void page_notes(app_t *a) {
         y += lines * 16 + 6;
     }
     gfx_text_wrap(c, &FONT_SMALL, 14, l.footer_y - 6 - (foot_lines - 1) * 16, l.w - 28, 16, foot,
-                  C_TEXT_FAINT, 2);
+                  C_TEXT_FAINT, 4);
+}
+
+// ------------------------------------------------------------------ Check-Liste
+// Symbole unterscheiden sich auch in der Form (nicht nur in der Farbe)
+static void status_icon(canvas_t *c, float cx, float cy, chk_status_t st) {
+    const uint32_t col = status_color(st);
+    switch (st) {
+        case CHK_OK:
+            gfx_disc(c, cx, cy, 6.5f, col, OPAQUE);
+            gfx_line(c, cx - 3.2f, cy + 0.2f, cx - 0.8f, cy + 2.8f, 1.8f, 0xFFFFFFu, OPAQUE);
+            gfx_line(c, cx - 0.8f, cy + 2.8f, cx + 3.4f, cy - 2.8f, 1.8f, 0xFFFFFFu, OPAQUE);
+            break;
+        case CHK_NOTE:
+            gfx_triangle(c, cx, cy - 7.5f, cx - 7.5f, cy + 6.0f, cx + 7.5f, cy + 6.0f, col,
+                         OPAQUE);
+            gfx_fill(c, (int)cx - 1, (int)cy - 3, 2, 5, 0x202020u);
+            gfx_fill(c, (int)cx - 1, (int)cy + 3, 2, 2, 0x202020u);
+            break;
+        case CHK_ALERT:
+            gfx_disc(c, cx, cy, 6.8f, col, OPAQUE);
+            gfx_fill(c, (int)cx - 1, (int)cy - 4, 3, 5, 0xFFFFFFu);
+            gfx_fill(c, (int)cx - 1, (int)cy + 2, 3, 3, 0xFFFFFFu);
+            break;
+        case CHK_INFO:
+            gfx_disc(c, cx, cy, 6.5f, col, OPAQUE);
+            gfx_fill(c, (int)cx - 1, (int)cy - 4, 2, 2, C_BG);
+            gfx_fill(c, (int)cx - 1, (int)cy - 1, 2, 5, C_BG);
+            break;
+        default:
+            gfx_disc(c, cx, cy, 6.5f, C_TEXT_FAINT, OPAQUE);
+            gfx_disc(c, cx, cy, 4.6f, C_BG, OPAQUE);
+            break;
+    }
+}
+
+static box_t check_row(lay_t l, int i) {
+    const int y0 = l.portrait ? 50 : 28, rh = l.portrait ? 23 : 17;
+    return (box_t){0, y0 + i * rh, l.w, rh};
+}
+
+static void page_check(app_t *a) {
+    canvas_t *c = a->c;
+    lay_t l = lay(a);
+    if (l.portrait) {
+        char who[PROFILE_NAME_BYTES + 12];
+        snprintf(who, sizeof who, "Person: %s", a->meas_known ? a->meas_profile.name : "Gast");
+        gfx_text(c, &FONT_SMALL, 14, 44, who, C_TEXT_DIM, OPAQUE);
+    }
+    for (int i = 0; i < a->n_checks; i++) {
+        const check_item_t *it = &a->checks[i];
+        const box_t r = check_row(l, i);
+        const int mid = r.y + r.h / 2;
+        status_icon(c, 20.0f, (float)mid, it->status);
+        gfx_text(c, &FONT_SMALL, 36, mid + 5, it->label, C_TEXT, OPAQUE);
+        gfx_text(c, &FONT_SMALL, l.w - 12 - gfx_text_width(&FONT_SMALL, it->value), mid + 5,
+                 it->value, it->status == CHK_NA ? C_TEXT_FAINT : C_TEXT_DIM, OPAQUE);
+        if (i + 1 < a->n_checks) {
+            gfx_fill(c, 12, r.y + r.h - 1, l.w - 24, 1, C_PANEL_EDGE);
+        }
+    }
+    if (a->touch_xy) {
+        text_center(c, &FONT_SMALL, l.w / 2, l.footer_y - 5, "Antippen für die Erklärung",
+                    C_TEXT_FAINT);
+    }
+}
+
+static void draw_check_detail(app_t *a) {
+    canvas_t *c = a->c;
+    lay_t l = lay(a);
+    const check_item_t *it = &a->checks[a->detail];
+    gfx_fill(c, 0, 0, l.w, l.h, C_BG);
+    header(a, it->label, NULL);
+    char cnt[16];
+    snprintf(cnt, sizeof cnt, "%d / %d", a->detail + 1, a->n_checks);
+    gfx_text(c, &FONT_SMALL, l.w - 40 - gfx_text_width(&FONT_SMALL, cnt), 18, cnt, C_TEXT_FAINT,
+             OPAQUE);
+    const int foot = l.h - 10;  // Grundlinie der Fußzeile
+    const bool alert = it->status == CHK_ALERT;
+    const int e_lines = l.portrait ? 3 : 2;  // Zeilen des Notruf-Hinweises
+    const int e_base = foot - (e_lines - 1) * 16;
+    const int end = alert ? e_base - 16 : foot - 20;  // Platz für Text bis hier
+
+    int y = 56;
+    status_icon(c, 22.0f, (float)y - 5.0f, it->status);
+    const uint32_t vcol = it->status == CHK_NOTE || it->status == CHK_ALERT ? status_color(it->status)
+                                                                            : C_TEXT;
+    int n = gfx_text_wrap(c, &FONT_LABEL, 40, y, l.w - 54, 20, it->verdict, vcol, 2);
+    y += (n - 1) * 20 + 14;
+    gfx_text(c, &FONT_VALUE, 14, y + 20, it->value, C_TEXT, OPAQUE);
+    y += 40;
+    int room = (end - y) / 16;
+    n = gfx_text_wrap(c, &FONT_SMALL, 14, y + 12, l.w - 28, 16, it->advice, C_TEXT,
+                      room < 1 ? 1 : room);
+    y += n * 16 + 10;
+    room = (end - y) / 16;
+    if (room >= 1) {
+        gfx_text_wrap(c, &FONT_SMALL, 14, y + 12, l.w - 28, 16, it->about, C_TEXT_FAINT, room);
+    }
+    if (alert) {  // statt der Wisch-Zeile
+        gfx_text_wrap(c, &FONT_SMALL, 14, e_base, l.w - 28, 16,
+                      "Bei Brustschmerz, Atemnot oder Ohnmacht sofort den Notruf 112 wählen.",
+                      C_ACCENT, e_lines);
+    } else if (a->touch_xy) {
+        text_center(c, &FONT_SMALL, l.w / 2, foot, "Wischen: weiter · Tippen: zurück",
+                    C_TEXT_FAINT);
+    }
 }
 
 static void draw_result(app_t *a) {
@@ -676,13 +989,16 @@ static void draw_result(app_t *a) {
         case 0:
             page_overview(a);
             break;
-        case 1:
-            page_trend(a);
+        case PAGE_CHECK:
+            page_check(a);
             break;
         case 2:
-            page_hrv(a);
+            page_trend(a);
             break;
         case 3:
+            page_hrv(a);
+            break;
+        case 4:
             page_beat(a);
             break;
         default:
@@ -807,6 +1123,13 @@ static void draw_info(app_t *a) {
 
 // ------------------------------------------------------------------ Messung
 static void start_measure(app_t *a) {
+    const profile_t *who = settings_person(a->ui);
+    a->meas_known = who != NULL;
+    if (who) {
+        a->meas_profile = *who;
+    } else {
+        profile_clear(&a->meas_profile);
+    }
     ana_rec_clear(a->rec);
     a->measuring = true;
     a->measure_full = false;
@@ -840,6 +1163,9 @@ static void run_analysis(app_t *a) {
     a->result_status = ana_run(a->rec, power, &a->mon->qrs, a->scratch, a->scratch_size, a->res);
     monitor_relearn(a->mon);  // der Detektor wurde für die Auswertung geliehen
     a->has_result = a->result_status == ANA_OK;
+    a->n_checks = a->has_result ? check_build(a->res, a->meas_known ? &a->meas_profile : NULL,
+                                              a->result_test, a->checks, CHK_MAX)
+                                : 0;
     a->screen = APP_RESULT;
     a->page = 0;
     draw_result(a);
@@ -870,6 +1196,18 @@ static void redraw(app_t *a) {
         case APP_INFO:
             draw_info(a);
             break;
+        case APP_PROFILES:
+            draw_profiles(a);
+            break;
+        case APP_PROFILE_EDIT:
+            draw_profile_edit(a);
+            break;
+        case APP_KEYBOARD:
+            kb_draw(&a->kb, a->c);
+            break;
+        case APP_CHECK_DETAIL:
+            draw_check_detail(a);
+            break;
     }
     if (a->toast_shown) {
         draw_toast(a);
@@ -886,6 +1224,9 @@ void app_init(app_t *a) {
     a->has_result = false;
     if (a->ui->rotation > 1) {
         a->ui->rotation = 0;
+    }
+    if (a->ui->person > PERSON_GUEST) {
+        a->ui->person = PERSON_GUEST;
     }
     apply_look(a);
     apply_orientation(a);
@@ -1089,8 +1430,10 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
             } else if (hit(menu_item(l, 2), ev.x, ev.y)) {
                 a->screen = APP_SETTINGS;
                 redraw(a);
-            } else if (hit(menu_item(l, 3), ev.x, ev.y) || hit(menu_close(l), ev.x, ev.y) ||
-                       !hit(menu_panel(l), ev.x, ev.y)) {
+            } else if (hit(menu_item(l, 3), ev.x, ev.y)) {
+                a->screen = APP_PROFILES;
+                redraw(a);
+            } else if (hit(menu_close(l), ev.x, ev.y) || !hit(menu_panel(l), ev.x, ev.y)) {
                 go_live(a);
             }
             break;
@@ -1118,7 +1461,17 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
                 }
                 break;
             }
-            if (ev.type == EV_SWIPE_LEFT || (tap && hit(res_button(l, 3), ev.x, ev.y))) {
+            if (tap && a->page == 0 && ev.y >= overview_check_y(l) && ev.y < l.footer_y &&
+                a->has_result) {
+                a->page = PAGE_CHECK;
+                redraw(a);
+            } else if (tap && a->page == PAGE_CHECK && a->has_result && ev.y < l.footer_y &&
+                       ev.y >= check_row(l, 0).y &&
+                       (ev.y - check_row(l, 0).y) / check_row(l, 0).h < a->n_checks) {
+                a->detail = (ev.y - check_row(l, 0).y) / check_row(l, 0).h;
+                a->screen = APP_CHECK_DETAIL;
+                redraw(a);
+            } else if (ev.type == EV_SWIPE_LEFT || (tap && hit(res_button(l, 3), ev.x, ev.y))) {
                 if (a->page < APP_PAGES - 1) {
                     a->page++;
                     redraw(a);
@@ -1167,6 +1520,91 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
         case APP_INFO:
             if (tap || ev.type == EV_LONG) {
                 a->screen = APP_SETTINGS;
+                redraw(a);
+            }
+            break;
+        case APP_PROFILES:
+            if (ev.type == EV_LONG || (tap && hit(close_box(l), ev.x, ev.y))) {
+                back_to_menu(a);
+                break;
+            }
+            for (int i = 0; tap && i <= PERSON_GUEST; i++) {
+                if (!hit(prof_row(l, i), ev.x, ev.y)) {
+                    continue;
+                }
+                if (i == PERSON_GUEST) {
+                    select_person(a, i);
+                } else if (!profile_used(&a->ui->profiles[i]) ||
+                           hit(prof_edit_box(l, i), ev.x, ev.y)) {
+                    open_editor(a, i);
+                } else {
+                    select_person(a, i);
+                }
+                break;
+            }
+            break;
+        case APP_PROFILE_EDIT:
+            if (ev.type == EV_LONG || (tap && hit(close_box(l), ev.x, ev.y))) {
+                close_editor(a);
+                break;
+            }
+            if (!tap) {
+                break;
+            }
+            if (hit(edit_button(l, 1), ev.x, ev.y)) {
+                close_editor(a);
+            } else if (hit(edit_button(l, 0), ev.x, ev.y)) {
+                if (profile_used(&a->ui->profiles[a->edit_idx])) {
+                    profile_clear(&a->ui->profiles[a->edit_idx]);
+                    if (a->ui->person == a->edit_idx) {
+                        a->ui->person = PERSON_GUEST;
+                    }
+                    a->edit_new = false;
+                    a->req_save = true;
+                    a->screen = APP_PROFILES;
+                    redraw(a);
+                }
+            } else {
+                for (int i = 0; i < F_COUNT; i++) {
+                    if (!hit(edit_row(l, i), ev.x, ev.y)) {
+                        continue;
+                    }
+                    if (i == F_SEX) {
+                        profile_t *p = &a->ui->profiles[a->edit_idx];
+                        p->sex = (uint8_t)((p->sex + 1) % 3);
+                        a->req_save = true;
+                        redraw(a);
+                    } else {
+                        open_field(a, i);
+                    }
+                    break;
+                }
+            }
+            break;
+        case APP_KEYBOARD:
+            if (tap) {
+                kb_result_t kr = kb_tap(&a->kb, l.w, l.h, ev.x, ev.y);
+                if (kr == KB_OK) {
+                    keyboard_done(a);
+                }
+                a->screen = kr == KB_NONE ? APP_KEYBOARD : APP_PROFILE_EDIT;
+                redraw(a);
+            }
+            break;
+        case APP_CHECK_DETAIL:
+            if (ev.type == EV_SWIPE_LEFT) {
+                if (a->detail < a->n_checks - 1) {
+                    a->detail++;
+                    redraw(a);
+                }
+            } else if (ev.type == EV_SWIPE_RIGHT) {
+                if (a->detail > 0) {
+                    a->detail--;
+                    redraw(a);
+                }
+            } else if (tap || ev.type == EV_LONG) {
+                a->screen = APP_RESULT;
+                a->page = PAGE_CHECK;
                 redraw(a);
             }
             break;
