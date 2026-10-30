@@ -201,6 +201,25 @@ die Aufnahme selbst aus. Die Ergebnisse stehen auf sechs Seiten:
 5. **Schlagform:** typischer Schlag (Median) mit P, Q, S, T und PR, QRS, QT, QTc (Fridericia).
 6. **Hinweise:** alle Rhythmus- und Signalhinweise im Wortlaut.
 
+#### Atmung
+
+Oben im Menü schaltet ein Umschalter zwischen **EKG** und **Atmung**. Nach dem Einschalten gilt immer EKG.
+Die Atem-Messung dauert wie die EKG-Messung 2 Minuten, zeigt aber die Atmung:
+
+- **Atemkurve:** Beim Atmen schwankt die Höhe der R-Zacke; daraus entsteht die Kurve (aus dem EKG geschätzt,
+  nicht direkt gemessen, es gibt keinen Brustgurt).
+- **Atemzüge pro Minute:** Es gibt einen Wert nur, wenn die Schwankung der R-Zacke und die atemabhängige
+  Schwankung des Pulses im selben Takt laufen (Gegenprobe). Sonst steht „nicht sicher bestimmbar“ mit Grund; die
+  grobe Schätzung allein aus der Amplitude steht dann auf der Seite „Hinweise“. Während der Messung zeigt die
+  Anzeige ab 45 s eine laufende Schätzung („≈“). Als Atemfrequenz zählen 8 bis 27 pro Minute; üblich in Ruhe sind
+  12 bis 20.
+- **Kennwerte:** Schwankung des Pulses (Spitze–Spitze), Gleichmaß der Atemzüge (Streuung der Zykluslänge: unter
+  15 % hoch, unter 30 % mittel) und HRV (RMSSD).
+- Die Messung ersetzt im Gerät das letzte EKG-Ergebnis (beide teilen sich die Aufnahme).
+
+**Atem-Coach** (Menü im Modus Atmung): Ein Kreis atmet vor, Ein- und Ausatmen gleich lang, Tempo 4 bis 10 pro
+Minute, Dauer 2 oder 5 Minuten; daneben läuft der Puls mit. Eine Übung, nichts wird gespeichert.
+
 #### Check-Liste und Profile
 
 Die Check-Seite sagt, ob ein Wert im üblichen Bereich liegt, und erklärt jeden Punkt in Alltagssprache

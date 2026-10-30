@@ -21,6 +21,7 @@
 #include "pico/stdlib.h"
 #include "pico/unique_id.h"
 #include "protocol.h"
+#include "private_store.h"
 #include "settings.h"
 #include "testsignal.h"
 #include "tusb.h"
@@ -432,6 +433,7 @@ int main(void) {
         if (!dev.streaming) {
             // nicht während einer Aufnahme: Flash löschen hält Kern 0 bis ~0,1 s an
             settings_service(now);
+            priv_service(now);
         }
         if (!dev.streaming && !g_link.no_pause &&
             (last_vsys == 0 ? now > 2000u : now - last_vsys >= VSYS_INTERVAL_MS)) {

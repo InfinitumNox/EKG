@@ -38,6 +38,15 @@ void ana_rr_overlap_mask(const double *t, int n_t, ana_invalid_t inv, bool *bad)
 bool ana_compute_hrv(const double *t, int n_t, ana_invalid_t inv, ana_hrv_t *out,
                      uint8_t *ok_out, ana_arena_t *a);
 
+// Lomb-Scargle-Spektrum wie ekg.dsp.hrv.lomb_psd auf dem Raster numpy.arange(0.001, 0.5, 0.001)
+#define LOMB_N 499
+void ana_lomb_freqs(double *f);
+bool ana_lomb_psd(const double *t, const double *y_in, int n, double *freqs, double *psd,
+                  ana_arena_t *a);
+// Frequenz der stärksten Spitze im Band, wenn sie sich abhebt (ekg.dsp.hrv.dominant_frequency)
+bool ana_dominant_frequency(const double *f, const double *p, double lo, double hi, double *out,
+                            ana_arena_t *a);
+
 typedef struct {
     int normal_qrs;
     int other_qrs;

@@ -24,6 +24,7 @@ BREATHING_BAND = (0.1, 0.5)  # 6–30 Atemzüge/min
 WINDOW_S = 120.0
 STEP_S = 60.0
 MATCH_HZ = 0.02
+RATE_RANGE = (0.13, 0.45)  # plausible Atemfrequenz in Ruhe: 8 bis 27 pro Minute
 MIN_RR_PEAK = 0.25  # RR-Spitze mit mindestens 25 % der stärksten im Atembereich
 
 
@@ -102,3 +103,40 @@ def estimate_breathing(
     if windows == 0 or len(matches) < max(2, 0.3 * windows):
         return None
     return float(np.median(matches))
+
+
+def estimate_breathing_window(
+    r_times_s: np.ndarray, amp: np.ndarray, invalid: Intervals | None = None
+) -> tuple[float | None, float | None]:
+    """Atemfrequenz aus einem einzigen Fenster über die ganze Aufnahme (Gerät: 2 min).
+
+    Liefert (Atemfrequenz, Spitze der Amplitude) in Hz. Die Atemfrequenz gibt es nur, wenn
+    die Amplituden-Spitze mit einer deutlichen Spitze im RR-Spektrum übereinstimmt; die
+    Amplituden-Spitze allein ist die Rückfallebene für die Anzeige „≈“. Dieselbe Rechnung
+    steht in firmware/src/analysis/ana_breath.c.
+    """
+    t = np.asarray(r_times_s, dtype=np.float64)
+    a = np.asarray(amp, dtype=np.float64)
+    if len(t) < 60 or t[-1] - t[0] < 90.0:
+        return None, None
+    good = np.isfinite(a)
+    if good.sum() < 20:
+        return None, None
+    med = float(np.median(a[good]))
+    mad = float(np.median(np.abs(a[good] - med))) or 1e-9
+    good &= np.abs(a - med) < 5 * 1.4826 * mad
+    if good.sum() < 20:
+        return None, None
+    f, p = lomb_psd(t[good], a[good])
+    edr = dominant_frequency(f, p, BREATHING_BAND)
+    if edr is None:
+        return None, None
+    rr = np.diff(t)
+    ok_rr, _ = nn_mask(rr, rr_overlap_mask(t, invalid))
+    if ok_rr.sum() < 60:
+        return None, edr
+    near = [fr for fr in _rr_peaks(t[1:][ok_rr], rr[ok_rr] * 1000.0) if abs(fr - edr) <= MATCH_HZ]
+    if not near:
+        return None, edr
+    rate = 0.5 * (edr + min(near, key=lambda fr: abs(fr - edr)))
+    return (rate if RATE_RANGE[0] <= rate <= RATE_RANGE[1] else None), edr

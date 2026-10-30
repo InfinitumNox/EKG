@@ -3,7 +3,8 @@
 //
 //   display_preview [tag] [hochkant] splash <t_ms> <out.ppm>
 //   display_preview [tag] [hochkant] monitor <blocks.bin> <out_prefix> <t_ms> [<t_ms> …]
-//   display_preview [tag] [hochkant] app <blocks.bin> <out_prefix> <script>
+//   display_preview [tag] [hochkant] [privat] app <blocks.bin> <out_prefix> <script>
+//   (privat: private Daten mit PIN 1234 und vier gelernten Sessions)
 //
 // app: spielt die Bedienung mit eingerichtetem Touch durch. Skript je Zeile:
 //   <t_ms> tap <x> <y> | long | swipe_l | swipe_r | shot <name>
@@ -57,6 +58,29 @@ typedef struct {
 } step_t;
 
 static bool portrait;
+static bool privat_prefilled;
+static priv_data_t pdata;
+
+void priv_random_bytes(uint8_t *out, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        out[i] = (uint8_t)(37 * i + 11);
+    }
+}
+
+// vier gelernte Sessions und die PIN 1234, damit auch die Anzeige mit Prozent zu sehen ist
+static void prefill_private(void) {
+    priv_clear(&pdata);
+    priv_set_pin(&pdata, "1234");
+    for (int i = 0; i < 4; i++) {
+        priv_session_t x = {.duration_s = (uint16_t)(570 + 40 * i), .hr_start = 72,
+                            .hr_peak = (uint8_t)(122 + 2 * i)};
+        for (int k = 0; k < PRIV_CURVE; k++) {
+            const float u = (float)k / (PRIV_CURVE - 1);
+            x.curve[k] = (uint8_t)(72 + (x.hr_peak - 72) * u * u);
+        }
+        priv_add_session(&pdata, &x);
+    }
+}
 
 // Tasten der Bildschirmtastatur antippen (Mitte der Taste, wie ein Finger)
 static void press_keys(const canvas_t *c, bool single, const char *s, uint32_t t) {
@@ -124,6 +148,12 @@ static int run_app(const char *bins, const char *prefix, const char *script, con
     app.rec = &rec;
     app.res = &res;
     app.ui = &ui;
+    if (privat_prefilled) {
+        prefill_private();
+    } else {
+        priv_clear(&pdata);
+    }
+    app.pd = &pdata;
     app.scratch = px;
     app.scratch_size = sizeof px;
     app.version = ver;
@@ -194,6 +224,11 @@ int main(int argc, char **argv) {
     }
     if (argc > 1 && strcmp(argv[1], "hochkant") == 0) {
         portrait = true;
+        argc--;
+        argv++;
+    }
+    if (argc > 1 && strcmp(argv[1], "privat") == 0) {
+        privat_prefilled = true;
         argc--;
         argv++;
     }

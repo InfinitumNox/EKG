@@ -27,23 +27,30 @@ add_executable(ekg
     src/display/hmi.c
     src/display/ili9341.c
     src/display/settings.c
+    src/display/private_store.c
     src/display/settings_codec.c
     src/ecg/hr.c
     src/ecg/qrs.c
     src/ecg/sosf.c
     src/analysis/ana.c
+    src/analysis/ana_breath.c
     src/analysis/ana_math.c
     src/analysis/ana_rr.c
     src/analysis/ana_wave.c
     src/ui/app.c
     src/ui/assets.c
     src/ui/avatar.c
+    src/ui/breath.c
+    src/ui/coach.c
     src/ui/check.c
     src/ui/gesture.c
     src/ui/gfx.c
     src/ui/keyboard.c
     src/ui/monitor.c
+    src/ui/private_data.c
+    src/ui/privat.c
     src/ui/profile.c
+    src/ui/solo.c
     src/ui/splash.c
     src/ui/theme.c
     src/ui/touchcal.c
@@ -61,11 +68,12 @@ target_link_libraries(ekg PRIVATE
     hardware_watchdog
     pico_flash
     pico_multicore
+    pico_rand
     tinyusb_device
     tinyusb_board
 )
 pico_enable_stdio_usb(ekg 0)
 pico_enable_stdio_uart(ekg 0)
 pico_set_program_name(ekg "Pico EKG")
-pico_set_program_version(ekg "0.7.5")
+pico_set_program_version(ekg "0.8.0")
 pico_add_extra_outputs(ekg)

@@ -104,6 +104,9 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
   Rhythmus-Hinweise, typischer Schlag mit PR/QRS/QT und Signalqualität direkt auf dem Display. Die Verfahren
   sind aus der Laptop-Software nach C übertragen und gegen die Python-Fassung getestet. Bedienung in
   [docs/AUFBAU.md](docs/AUFBAU.md).
+- **Atmung:** Umschalter EKG/Atmung im Menü. Die Atem-Messung (2 min) zeigt Atemkurve und Atemzüge pro Minute,
+  geschätzt aus der R-Zacke und gegengeprüft mit der Pulsschwankung; ohne Übereinstimmung gibt es keinen Wert.
+  Dazu ein Atem-Coach (Kreis, 4–10 Atemzüge/min) als Übung.
 - **Elektroden-Anleitung:** Eine Figur zeigt, welche Elektrode wohin gehört (Farben umschaltbar), und
   öffnet sich von selbst, wenn der Kontakt fehlt; die betroffene Elektrode ist markiert. Die Figur passt sich
   Geschlecht, Größe und Gewicht des Profils an oder ist eine Standardfigur.

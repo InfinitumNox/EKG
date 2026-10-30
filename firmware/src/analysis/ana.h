@@ -154,6 +154,44 @@ typedef enum {
     ANA_TOO_MANY_GAPS,
 } ana_status_t;
 
+// ------------------------------------------------------------------ Atmung
+// Atemfrequenz aus der QRS-Amplitude (EDR), gegengeprüft mit der atemabhängigen Pulsschwankung.
+// Ein Fenster über die ganze Aufnahme; ohne Übereinstimmung gibt es keinen Wert.
+#define ANA_BREATH_HZ 4  // Abtastrate der Atemkurve
+#define ANA_BREATH_CURVE (ANA_BREATH_HZ * ANA_MAX_S)
+
+typedef enum {
+    BR_OK = 0,
+    BR_TOO_SHORT,  // zu kurz oder zu wenige Schläge
+    BR_NO_PEAK,    // keine deutliche Spitze in der Amplitude
+    BR_MISMATCH,   // Amplitude und Pulsschwankung stimmen nicht überein
+} ana_breath_why_t;
+
+typedef struct {
+    ana_breath_why_t why;
+    bool has_edr;
+    double edr_hz;    // Spitze der QRS-Amplitude (auch ohne Gegenprobe)
+    double rate_hz;   // Atemfrequenz, nur bei BR_OK
+    bool has_swing;
+    double swing_bpm; // Spitze-Spitze der atemabhängigen Pulsschwankung
+    int n_cycles;     // erkannte Atemzüge in der Kurve
+    double cycle_cv;  // Streuung der Zykluslänge (robust), -1: zu wenige Zyklen
+    int curve_n;
+    int8_t curve[ANA_BREATH_CURVE];  // Atemkurve, −100 … 100
+} ana_breath_t;
+
+// Nach ana_run: res und das gefilterte Signal in rec werden gelesen.
+bool ana_breath(const ana_recording_t *rec, const ana_result_t *res, ana_breath_t *out,
+                void *scratch, size_t scratch_size);
+// Live: Spitze einer Amplitudenreihe (t in s) im Atembereich, false ohne deutliche Spitze
+bool ana_breath_peak(const double *t, const double *a, int n, double *hz, void *scratch,
+                     size_t scratch_size);
+
+// Reihe (t in s) auf das 4-Hz-Raster ab t0 legen und die Grundlinie (12 s) abziehen; g, valid
+// und tmp haben je ng Plätze. Lücken über 3 s bleiben ungültig.
+void ana_breath_series(const double *t, const double *v, int n, double t0, int ng, double *g,
+                       bool *valid, double *tmp);
+
 void ana_rec_clear(ana_recording_t *rec);
 // Ein Block mit 25 Rohsummen (64-fach) und seinen Flags; false, wenn die Aufnahme voll ist.
 bool ana_rec_add(ana_recording_t *rec, const uint32_t *raw64, int n, uint8_t flags);

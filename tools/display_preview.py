@@ -86,6 +86,15 @@ def main() -> None:
         g = SyntheticEcg(FS, scenario=Scenario.AF, seed=8, amplitude=0.8, mains_mv=0.03)
         mv = g.generate(FS * 140)
         blocks_file(tmp / "af.bin", mv, np.zeros(len(mv), dtype=np.uint8))
+        # steigender Puls (70 -> 118) für die Solo-Session: 30 s Ruhe, dann in 5-s-Stücken
+        parts = [SyntheticEcg(FS, 70.0, Scenario.NORMAL, seed=20, amplitude=0.8).generate(FS * 30)]
+        for k in range(22):
+            hr = 70.0 + 48.0 * (k + 1) / 22.0
+            parts.append(
+                SyntheticEcg(FS, hr, Scenario.NORMAL, seed=21 + k, amplitude=0.8).generate(FS * 5)
+            )
+        mv = np.concatenate(parts)
+        blocks_file(tmp / "ramp.bin", mv, np.zeros(len(mv), dtype=np.uint8))
         # Elektroden ab: erst LA, dann beide; die Anleitung öffnet sich nach 4 s von selbst
         g = SyntheticEcg(FS, scenario=Scenario.REST, seed=5, amplitude=0.8, mains_mv=0.03)
         mv = g.generate(FS * 20)
@@ -101,17 +110,23 @@ def main() -> None:
                      "weight": "100 163", "done": "240 218", "close": "310 12",
                      "measure": "160 69", "next": "292 222", "live": "100 222",
                      "check_row": "160 53", "rhythm_row": "160 75", "back": "160 120",
-                     "settings": "160 166", "row_avatar": "160 163", "row_touch": "160 193",
-                     "row_info": "160 223", "leads": "230 118", "leads_done": "240 222",
-                     "leads_colors": "80 222"},
+                     "settings": "90 166", "row_avatar": "160 163", "row_touch": "160 193",
+                     "row_info": "160 223", "leads": "230 166", "leads_done": "240 222",
+                     "leads_colors": "80 222", "mode_breath": "136 28",
+                     "coach": "230 118", "coach_plus": "297 69", "coach_5": "283 122",
+                     "version": "160 45", "home_start": "160 69", "fertig": "160 212",
+                     "save": "240 216", "no_count": "80 216"},
             "hochkant": {"menu": "120 160", "person": "120 252", "prof0": "100 65",
                          "age": "100 88", "sex": "100 128", "height": "100 168",
                          "weight": "100 208", "done": "180 290", "close": "220 12",
                          "measure": "120 100", "next": "220 300", "live": "70 300",
                          "check_row": "120 84", "rhythm_row": "120 107", "back": "120 160",
-                         "settings": "120 200", "row_avatar": "120 208", "row_touch": "120 248",
-                         "row_info": "120 288", "leads": "171 156", "leads_done": "180 298",
-                         "leads_colors": "60 298"},
+                         "settings": "70 204", "row_avatar": "120 208", "row_touch": "120 248",
+                         "row_info": "120 288", "leads": "171 204", "leads_done": "180 298",
+                         "leads_colors": "60 298", "mode_breath": "134 60",
+                         "coach": "171 156", "coach_plus": "209 217", "coach_5": "185 257",
+                         "version": "120 45", "home_start": "120 78", "fertig": "120 286",
+                         "save": "176 286", "no_count": "63 286"},
         }  # fmt: skip
         for orient, sp in spots.items():
             script = [
@@ -164,18 +179,66 @@ def main() -> None:
             men_script = profile_script(sp, "Max", 55, 1, 190, 125, "mann_schwer")
             kid_script = profile_script(sp, "Mia", 9, 2, 135, 28, "kind")
             lean_script = profile_script(sp, "Lea", 30, 2, 178, 52, "frau_schlank")
+
+            def pad_tap(orient, key, t):
+                i = "789456123<0K".index(key)
+                if orient == "quer":
+                    x, y = 24 + (i % 3) * 91 + 45, 70 + (i // 3) * 42 + 21
+                else:
+                    x, y = 12 + (i % 3) * 72 + 36, 96 + (i // 3) * 52 + 26
+                return f"{t} tap {x} {y}"
+
+            def pin_lines(orient, t0, digits):
+                return [pad_tap(orient, d, t0 + 100 * i) for i, d in enumerate(digits)] + [
+                    pad_tap(orient, "K", t0 + 100 * len(digits))
+                ]
+
+            def to_private(sp, t0):
+                return [
+                    f"{t0} tap {sp['menu']}", f"{t0 + 100} tap {sp['settings']}",
+                    f"{t0 + 200} tap {sp['row_info']}",
+                    *[f"{t0 + 400 + 150 * i} tap {sp['version']}" for i in range(5)],
+                ]  # fmt: skip
+
+            atem_script = [
+                f"1000 tap {sp['menu']}", f"1100 tap {sp['mode_breath']}", "1200 shot menue_atmung",
+                f"1300 tap {sp['measure']}", "80000 shot atmung_messung",
+                "124000 shot atmung_ergebnis", f"124100 tap {sp['next']}",
+                "124200 shot atmung_kurve", f"124300 tap {sp['next']}", "124400 shot atmung_hinweise",
+            ]  # fmt: skip
+            coach_script = [
+                f"1000 tap {sp['menu']}", f"1100 tap {sp['mode_breath']}",
+                f"1200 tap {sp['coach']}", "3500 shot coach_ein", "8500 shot coach_aus",
+                f"8600 tap {sp['coach_plus']}", f"8700 tap {sp['coach_5']}", "9000 shot coach_5min",
+            ]  # fmt: skip
+            priv_new = [
+                *to_private(sp, 1000), "2100 shot pin_festlegen", *pin_lines(orient, 2200, "1234"),
+                "3000 shot pin_wiederholen", *pin_lines(orient, 3100, "1234"), "4000 shot privat_leer",
+                f"4100 tap {sp['home_start']}", "100000 shot session_lernt",
+                f"100100 tap {sp['fertig']}", "101000 shot session_ergebnis_lernt",
+            ]  # fmt: skip
+            priv_pre = [
+                *to_private(sp, 1000), "2100 shot pin_eingeben", *pin_lines(orient, 2200, "1234"),
+                "3000 shot privat_start", f"3100 tap {sp['home_start']}",
+                "100000 shot session_annaeherung", "132000 shot session_annaeherung2",
+                f"132100 tap {sp['fertig']}", "133000 shot session_ergebnis",
+            ]  # fmt: skip
             extra = [] if orient == "quer" else ["hochkant"]
             for theme, opt in (("nacht", []), ("tag", ["tag"])):
-                for src, lines in (
-                    ("a.bin", script),
-                    ("af.bin", af_script),
-                    ("af.bin", men_script),
-                    ("af.bin", kid_script),
-                    ("af.bin", lean_script),
-                    ("lo.bin", lo_script),
+                for src, lines, more in (
+                    ("a.bin", script, []),
+                    ("af.bin", af_script, []),
+                    ("af.bin", men_script, []),
+                    ("af.bin", kid_script, []),
+                    ("af.bin", lean_script, []),
+                    ("lo.bin", lo_script, []),
+                    ("a.bin", atem_script, []),
+                    ("af.bin", coach_script, []),
+                    ("ramp.bin", priv_new, []),
+                    ("ramp.bin", priv_pre, ["privat"]),
                 ):
                     (tmp / "script.txt").write_text("\n".join(lines) + "\n")
-                    cmd = [exe, *opt, *extra, "app", str(tmp / src), str(tmp / "app"),
+                    cmd = [exe, *opt, *extra, *more, "app", str(tmp / src), str(tmp / "app"),
                            str(tmp / "script.txt")]  # fmt: skip
                     subprocess.run(cmd, check=True)
                     for name in [line.split()[2] for line in lines if " shot " in line]:

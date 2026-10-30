@@ -16,6 +16,7 @@ import pytest
 
 from ekg.analysis import analyse
 from ekg.device.simulator import Ad8232Model, Scenario, SyntheticEcg
+from ekg.dsp.respiration import estimate_breathing_window, qrs_amplitudes
 from ekg.protocol import Flag
 from ekg.storage.recording import Recording
 from ekg.units import Conversion
@@ -33,6 +34,7 @@ SHIM = r"""
 
 static ana_recording_t rec;
 static ana_result_t res;
+static ana_breath_t br;
 static qrs_detector_t det;
 static unsigned char scratch[SCRATCH];
 
@@ -116,6 +118,18 @@ int t_run(const unsigned short *raw4, const unsigned char *flags, int n_blocks, 
     for (int i = 0; i < res.n_qnotes; i++) PUT("qnote=%s", res.qnotes[i]);
     for (int i = 0; i < res.n_beats; i++) r_index[i] = res.r_index[i];
     for (int i = 0; i < ANA_TMPL_LEN; i++) tmpl[i] = res.tmpl[i];
+    if (st == 0) {
+        ana_breath(&rec, &res, &br, scratch, sizeof scratch);
+        PUT("br.why=%d", br.why);
+        PUT("br.has_edr=%d", br.has_edr);
+        PUT("br.edr_hz=%.17g", br.edr_hz);
+        PUT("br.rate_hz=%.17g", br.rate_hz);
+        PUT("br.has_swing=%d", br.has_swing);
+        PUT("br.swing_bpm=%.17g", br.swing_bpm);
+        PUT("br.n_cycles=%d", br.n_cycles);
+        PUT("br.cycle_cv=%.17g", br.cycle_cv);
+        PUT("br.curve_n=%d", br.curve_n);
+    }
     return st;
 }
 """
@@ -149,10 +163,13 @@ def make_recording(
     hr: float = 70.0,
     mains_mv: float = 0.04,
     drop_blocks: tuple[int, ...] = (),
+    ecg_kw: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Aufnahme wie im Gerät: (raw4 je Sample, Flags je Block)."""
     conv = Conversion(oversampling=64)
     ecg = SyntheticEcg(FS, hr, scenario, seed=seed, mains_mv=mains_mv)
+    for key, value in (ecg_kw or {}).items():
+        setattr(ecg, key, value)
     model = Ad8232Model(FS, conv, 1100.0 * 1.03, seed=seed + 2)
     n_blocks = int(round(seconds * FS / BLOCK))
     raw4 = np.zeros(n_blocks * BLOCK, dtype=np.uint16)
@@ -353,3 +370,36 @@ def test_battery_note(lib):
     raw4, flags = make_recording(Scenario.REST, mains_mv=1.0, seconds=40.0)
     c = c_analysis(lib, raw4, flags, power=1)
     assert any("obwohl das Gerät auf Batterie lief" in n for n in c["qnote"])
+
+
+BREATH_CASES = [
+    ("0.25 Hz", {"resp_hz": 0.25, "rsa": 0.05, "amp_mod": 0.15}, 1),
+    ("0.15 Hz", {"resp_hz": 0.15, "rsa": 0.06, "amp_mod": 0.15}, 2),
+    ("0.33 Hz", {"resp_hz": 0.33, "rsa": 0.05, "amp_mod": 0.18}, 3),
+    ("ohne Atmung", {"rsa": 0.0, "amp_mod": 0.0}, 4),
+    ("ohne Pulsschwankung", {"resp_hz": 0.3, "rsa": 0.0, "amp_mod": 0.2}, 5),
+]
+
+
+@pytest.mark.parametrize(("name", "ecg_kw", "seed"), BREATH_CASES, ids=[c[0] for c in BREATH_CASES])
+def test_breathing_matches_python(lib, name, ecg_kw, seed):
+    raw4, flags = make_recording(Scenario.NORMAL, seed=seed, ecg_kw=ecg_kw)
+    py = python_analysis(raw4, flags)
+    amp = qrs_amplitudes(py.filtered_mv, py.r_index, FS)
+    rate, edr = estimate_breathing_window(py.r_index / FS, amp, py.invalid)
+    c = c_analysis(lib, raw4, flags)
+    assert (c["br.why"] == 0) == (rate is not None)
+    assert bool(c["br.has_edr"]) == (edr is not None)
+    if edr is not None:
+        assert c["br.edr_hz"] == pytest.approx(edr, abs=0.003)
+    if rate is not None:
+        assert c["br.rate_hz"] == pytest.approx(rate, abs=0.003)
+        assert c["br.rate_hz"] == pytest.approx(ecg_kw.get("resp_hz", 0.25), abs=0.02)
+    if name == "ohne Atmung":
+        assert c["br.why"] != 0  # keine Atmung: kein Wert (Randspitze bei 0,48 Hz wird verworfen)
+    if c["br.why"] == 0:
+        assert c["br.has_swing"] and c["br.swing_bpm"] > 0.5
+        assert c["br.curve_n"] > 440
+        # Zyklen: ungefähr Atemfrequenz × Dauer
+        assert abs(c["br.n_cycles"] - ecg_kw.get("resp_hz", 0.25) * 118) <= 4
+        assert 0 <= c["br.cycle_cv"] < 0.25

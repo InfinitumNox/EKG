@@ -323,9 +323,8 @@ void ana_rr_overlap_mask(const double *t, int n_t, ana_invalid_t inv, bool *bad)
 }
 
 // ------------------------------------------------------------------ HRV
-#define LOMB_N 499  // numpy.arange(0.001, 0.5, 0.001)
 
-static void lomb_freqs(double *f) {
+void ana_lomb_freqs(double *f) {
     const double start = 0.001, delta = (start + 0.001) - start;
     for (int i = 0; i < LOMB_N; i++) {
         f[i] = start + (double)i * delta;
@@ -333,14 +332,14 @@ static void lomb_freqs(double *f) {
 }
 
 // Einseitige Leistungsdichte (ms²/Hz), Integral = Varianz
-static bool lomb_psd(const double *t, const double *y_in, int n, double *freqs, double *psd,
+bool ana_lomb_psd(const double *t, const double *y_in, int n, double *freqs, double *psd,
                      ana_arena_t *a) {
     double *y = ANA_NEW(a, double, n);
     if (!y) {
         return false;
     }
     ana_detrend_linear(y_in, n, y);
-    lomb_freqs(freqs);
+    ana_lomb_freqs(freqs);
     ana_lombscargle(t, y, n, freqs, LOMB_N, psd);
     double area = ana_trapezoid(psd, freqs, LOMB_N);
     double var = ana_var(y, n, 0);
@@ -367,7 +366,7 @@ static double band_power(const double *f, const double *p, double lo, double hi)
     return m > 1 ? ana_trapezoid(p + i0, f + i0, m) : 0.0;
 }
 
-static bool dominant_frequency(const double *f, const double *p, double lo, double hi,
+bool ana_dominant_frequency(const double *f, const double *p, double lo, double hi,
                                double *out, ana_arena_t *a) {
     int i0 = -1, m = 0;
     for (int i = 0; i < LOMB_N; i++) {
@@ -496,7 +495,7 @@ bool ana_compute_hrv(const double *t, int n_t, ana_invalid_t inv, ana_hrv_t *out
     if (out->duration_s >= 60) {
         double *f = ANA_NEW(a, double, LOMB_N);
         double *p = ANA_NEW(a, double, LOMB_N);
-        if (!f || !p || !lomb_psd(t_ok, rr_ok, n_ok, f, p, a)) {
+        if (!f || !p || !ana_lomb_psd(t_ok, rr_ok, n_ok, f, p, a)) {
             return false;
         }
         double lf = band_power(f, p, LF_LO, LF_HI);
@@ -513,7 +512,7 @@ bool ana_compute_hrv(const double *t, int n_t, ana_invalid_t inv, ana_hrv_t *out
             out->lf_nu = 100 * lf / (lf + hf);
             out->hf_nu = 100 * hf / (lf + hf);
         }
-        out->has_peak = dominant_frequency(f, p, PEAK_LO, PEAK_HI, &out->peak_hz, a);
+        out->has_peak = ana_dominant_frequency(f, p, PEAK_LO, PEAK_HI, &out->peak_hz, a);
     }
     a->used = mark;
     return !a->failed;

@@ -12,6 +12,7 @@
 #include "pico/flash.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
+#include "private_store.h"
 #include "protocol.h"
 #include "settings.h"
 #include "splash.h"
@@ -31,6 +32,7 @@ static app_t app;
 static gesture_t gest;
 static uint32_t core1_stack[4096];  // 16 KB: QRS-Detektor und Auswertung brauchen mehr als 2 KB
 static ui_settings_t ui;
+static priv_data_t pdata;
 static char version[16];
 
 static uint32_t now_ms(void) {
@@ -61,6 +63,10 @@ static void apply_requests(const rect_t *dirty, int n, uint32_t now) {
     if (app.req_save) {
         app.req_save = false;
         settings_request_save(&ui, now);
+    }
+    if (app.req_priv_save) {
+        app.req_priv_save = false;
+        priv_request_save(app.pd, now);
     }
     if (app.req_push_all) {
         app.req_push_all = false;
@@ -106,6 +112,7 @@ static void poll_touch(uint32_t now) {
 static void core1_main(void) {
     flash_safe_execute_core_init();  // Kern 0 darf beim Speichern der Einstellungen anhalten
     settings_load(&ui);
+    priv_load(&pdata);
     hmi_init();
     backlight_set(0);
     ili_init(ui.rotation);
@@ -125,6 +132,7 @@ static void core1_main(void) {
     app.rec = &rec;
     app.res = &res;
     app.ui = &ui;
+    app.pd = &pdata;
     app.scratch = fb;
     app.scratch_size = sizeof fb;
     app.version = version;

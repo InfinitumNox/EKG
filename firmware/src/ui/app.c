@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app_int.h"
 #include "assets.h"
 #include "avatar.h"
 #include "protocol.h"
@@ -23,27 +24,15 @@ static const look_t LOOKS[] = {
 #define N_LOOKS (int)(sizeof LOOKS / sizeof LOOKS[0])
 
 #define TOAST_MS 2600u
-#define HEADER_H 26
 
 static const char *PAGE_NAMES[APP_PAGES] = {"Übersicht", "Check",      "Verlauf",
                                              "HRV",       "Schlagform", "Hinweise"};
 
-typedef struct {
-    int x, y, w, h;
-} box_t;
-
-static bool hit(box_t b, int x, int y) {
+bool hit(box_t b, int x, int y) {
     return x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h;
 }
 
-// Maße des aktuellen Bildes: quer 320 × 240, hochkant 240 × 320
-typedef struct {
-    int w, h;
-    bool portrait;
-    int footer_y;  // Knopfleiste der Ergebnisseiten
-} lay_t;
-
-static lay_t lay(const app_t *a) {
+lay_t lay(const app_t *a) {
     lay_t l = {a->c->w, a->c->h, a->c->h > a->c->w, 0};
     l.footer_y = l.portrait ? l.h - 40 : l.h - 36;
     return l;
@@ -51,7 +40,7 @@ static lay_t lay(const app_t *a) {
 
 // ------------------------------------------------------------------ Formatierung
 // Zahl mit Dezimalkomma; digits Nachkommastellen
-static void fmt_num(char *buf, size_t n, double v, int digits) {
+void fmt_num(char *buf, size_t n, double v, int digits) {
     if (!isfinite(v)) {
         snprintf(buf, n, "–");
         return;
@@ -68,18 +57,18 @@ static void fmt_num(char *buf, size_t n, double v, int digits) {
     }
 }
 
-static void fmt_duration(char *buf, size_t n, double s) {
+void fmt_duration(char *buf, size_t n, double s) {
     int t = (int)lrint(s < 0 ? 0 : s > 5999 ? 5999 : s);
     snprintf(buf, n, "%d:%02d", t / 60, t % 60);
 }
 
 // ------------------------------------------------------------------ Bausteine
-static void text_center(canvas_t *c, const font_t *f, int cx, int baseline, const char *s,
+void text_center(canvas_t *c, const font_t *f, int cx, int baseline, const char *s,
                         uint32_t col) {
     gfx_text(c, f, cx - gfx_text_width(f, s) / 2, baseline, s, col, OPAQUE);
 }
 
-static void button(canvas_t *c, box_t b, const char *label, bool primary, bool enabled) {
+void button(canvas_t *c, box_t b, const char *label, bool primary, bool enabled) {
     if (primary) {
         gfx_round_rect(c, b.x, b.y, b.w, b.h, 11, C_ACCENT, OPAQUE);
     } else {
@@ -90,14 +79,14 @@ static void button(canvas_t *c, box_t b, const char *label, bool primary, bool e
     text_center(c, &FONT_SMALL, b.x + b.w / 2, b.y + b.h / 2 + 5, label, col);
 }
 
-static void close_icon(canvas_t *c, int cx, int cy, uint32_t col) {
+void close_icon(canvas_t *c, int cx, int cy, uint32_t col) {
     gfx_line(c, (float)cx - 5.0f, (float)cy - 5.0f, (float)cx + 5.0f, (float)cy + 5.0f, 2.0f, col,
              OPAQUE);
     gfx_line(c, (float)cx - 5.0f, (float)cy + 5.0f, (float)cx + 5.0f, (float)cy - 5.0f, 2.0f, col,
              OPAQUE);
 }
 
-static void dim_screen(canvas_t *c) {
+void dim_screen(canvas_t *c) {
     for (int y = 0; y < c->h; y++) {
         for (int x = 0; x < c->w; x++) {
             gfx_blend(c, x, y, C_BG, 170);
@@ -106,7 +95,7 @@ static void dim_screen(canvas_t *c) {
 }
 
 // Kopfleiste mit Titel, optional Untertitel und Schließen-Kreuz
-static void header(app_t *a, const char *title, const char *sub) {
+void header(app_t *a, const char *title, const char *sub) {
     canvas_t *c = a->c;
     lay_t l = lay(a);
     gfx_fill(c, 0, 0, l.w, HEADER_H, C_PANEL);
@@ -118,7 +107,7 @@ static void header(app_t *a, const char *title, const char *sub) {
     close_icon(c, l.w - 20, 13, C_TEXT_DIM);
 }
 
-static box_t close_box(lay_t l) {
+box_t close_box(lay_t l) {
     return (box_t){l.w - 44, 0, 44, 36};
 }
 
@@ -151,10 +140,9 @@ static void apply_orientation(app_t *a) {
     monitor_layout(a->mon);
 }
 
-static void redraw(app_t *a);
 static void status_icon(canvas_t *c, float cx, float cy, chk_status_t st);
 
-static void go_live(app_t *a) {
+void go_live(app_t *a) {
     a->screen = APP_LIVE;
     a->mon->draw = true;
     a->mon->menu_button = a->touch_xy;
@@ -162,7 +150,7 @@ static void go_live(app_t *a) {
     a->req_push_all = true;
 }
 
-static void show_toast(app_t *a, const char *text, uint32_t now) {
+void show_toast(app_t *a, const char *text, uint32_t now) {
     snprintf(a->toast, sizeof a->toast, "%s", text);
     a->toast_until = now + TOAST_MS;
     a->toast_shown = true;
@@ -181,28 +169,38 @@ static void draw_toast(app_t *a) {
 }
 
 // ------------------------------------------------------------------ Menü
-// 0 = Messen & auswerten, 1 = Letztes Ergebnis, 2 = Einstellungen, 3 = Person,
-// 4 = Elektroden (rechts neben dem letzten Ergebnis)
+// Oben der Umschalter EKG | Atmung. Zeilen: 0 = Messen, Zeile 1 = Letztes Ergebnis (EKG: volle
+// Breite, Atmung: links) und 5 = Atem-Coach (nur Atmung, rechts), Zeile 2 = 2 Einstellungen
+// (links) und 4 Elektroden (rechts), Zeile 3 = 3 Person.
 static box_t menu_panel(lay_t l) {
     return l.portrait ? (box_t){10, 40, l.w - 20, 244} : (box_t){12, 8, l.w - 24, 224};
 }
 
-static box_t menu_item(lay_t l, int i) {
+static box_t menu_item(lay_t l, int i, app_mode_t mode) {
     box_t p = menu_panel(l);
     const int x = p.x + 12, w = p.w - 24, ph = l.portrait ? 50 : 46, h = l.portrait ? 40 : 36;
     if (i == 0) {
         return (box_t){x, p.y + 38, w, ph};
     }
     const int half = (w - 8) / 2;
-    const int row = i == 4 ? 1 : i;
+    const int row = i == 5 ? 1 : i == 4 ? 2 : i;
     const int y = p.y + 38 + ph + 8 + (row - 1) * (h + 8);
     if (i == 1) {
-        return (box_t){x, y, half, h};
+        return (box_t){x, y, mode == MODE_EKG ? w : half, h};
     }
-    if (i == 4) {
+    if (i == 5 || i == 4) {
         return (box_t){x + half + 8, y, w - half - 8, h};
     }
+    if (i == 2) {
+        return (box_t){x, y, half, h};
+    }
     return (box_t){x, y, w, h};
+}
+
+// Umschalter oben links im Menü: 0 = EKG, 1 = Atmung
+static box_t menu_mode(lay_t l, int i) {
+    box_t p = menu_panel(l);
+    return (box_t){p.x + 12 + i * 75, p.y + 6, 75, 28};
 }
 
 static box_t menu_close(lay_t l) {
@@ -222,34 +220,58 @@ static void draw_menu(app_t *a, bool fresh_bg) {
     const box_t p = menu_panel(l);
     gfx_round_rect(c, p.x, p.y, p.w, p.h, 14, C_PANEL, OPAQUE);
     gfx_round_frame(c, p.x, p.y, p.w, p.h, 14, 1.0f, C_PANEL_EDGE);
-    gfx_text(c, &FONT_LABEL, p.x + 16, p.y + 25, "Menü", C_TEXT, OPAQUE);
+    // Umschalter EKG | Atmung
+    {
+        const box_t e = menu_mode(l, 0), b = menu_mode(l, 1);
+        gfx_round_rect(c, e.x, e.y, e.w + b.w, e.h, e.h / 2, gfx_mix(C_PANEL, C_BG, 120), OPAQUE);
+        const box_t sel = a->mode == MODE_EKG ? e : b;
+        gfx_round_rect(c, sel.x + 2, sel.y + 2, sel.w - 2, sel.h - 4, (sel.h - 4) / 2, C_ACCENT,
+                       OPAQUE);
+        text_center(c, &FONT_SMALL, e.x + e.w / 2 + 1, e.y + e.h / 2 + 5, "EKG",
+                    a->mode == MODE_EKG ? 0xFFFFFFu : C_TEXT_DIM);
+        text_center(c, &FONT_SMALL, b.x + b.w / 2 - 1, b.y + b.h / 2 + 5, "Atmung",
+                    a->mode == MODE_BREATH ? 0xFFFFFFu : C_TEXT_DIM);
+    }
     close_icon(c, p.x + p.w - 24, p.y + 19, C_TEXT_DIM);
 
-    const box_t m = menu_item(l, 0);
+    const box_t m = menu_item(l, 0, a->mode);
     gfx_round_rect(c, m.x, m.y, m.w, m.h, 12, C_ACCENT, OPAQUE);
     float cy = (float)m.y + (float)m.h / 2.0f;
-    gfx_triangle(c, (float)m.x + 18.0f, cy - 10.0f, (float)m.x + 18.0f, cy + 10.0f,
-                 (float)m.x + 34.0f, cy, 0xFFFFFFu, OPAQUE);
+    if (a->mode == MODE_EKG) {
+        gfx_triangle(c, (float)m.x + 18.0f, cy - 10.0f, (float)m.x + 18.0f, cy + 10.0f,
+                     (float)m.x + 34.0f, cy, 0xFFFFFFu, OPAQUE);
+    } else {
+        gfx_disc(c, (float)m.x + 26.0f, cy, 11.0f, 0xFFFFFFu, 150);
+        gfx_disc(c, (float)m.x + 26.0f, cy, 6.0f, 0xFFFFFFu, OPAQUE);
+    }
     char dur[16], sub[40];
     fmt_duration(dur, sizeof dur, ANA_MAX_S);
+    const char *title = a->mode == MODE_EKG ? "Messen & auswerten" : "Atmung messen";
     if (l.portrait) {  // zweizeilig, damit es in 200 Pixel passt
-        gfx_text(c, &FONT_LABEL, m.x + 46, m.y + 22, "Messen &", 0xFFFFFFu, OPAQUE);
-        snprintf(sub, sizeof sub, "auswerten · %s", dur);
+        gfx_text(c, &FONT_LABEL, m.x + 46, m.y + 22, a->mode == MODE_EKG ? "Messen &" : "Atmung",
+                 0xFFFFFFu, OPAQUE);
+        snprintf(sub, sizeof sub, "%s · %s", a->mode == MODE_EKG ? "auswerten" : "messen", dur);
         gfx_text(c, &FONT_SMALL, m.x + 46, m.y + 40, sub, 0xFFFFFFu, 220);
     } else {
-        gfx_text(c, &FONT_LABEL, m.x + 46, m.y + m.h / 2 + 6, "Messen & auswerten", 0xFFFFFFu,
-                 OPAQUE);
+        gfx_text(c, &FONT_LABEL, m.x + 46, m.y + m.h / 2 + 6, title, 0xFFFFFFu, OPAQUE);
         gfx_text(c, &FONT_SMALL, m.x + m.w - 12 - gfx_text_width(&FONT_SMALL, dur),
                  m.y + m.h / 2 + 5, dur, 0xFFFFFFu, 200);
     }
-    button(c, menu_item(l, 1), l.portrait ? "Ergebnis" : "Letztes Ergebnis", false,
-           a->has_result || a->result_status);
-    button(c, menu_item(l, 4), "Elektroden", false, true);
-    button(c, menu_item(l, 2), "Einstellungen", false, true);
+    const bool have = a->mode == MODE_EKG ? (a->has_result || a->result_status) : a->has_breath;
+    button(c, menu_item(l, 1, a->mode), l.portrait && a->mode == MODE_BREATH ? "Ergebnis"
+                                        : "Letztes Ergebnis", false, have);
+    if (a->mode == MODE_BREATH) {
+        const box_t cb = menu_item(l, 5, a->mode);
+        button(c, cb, l.portrait ? "Coach" : "Atem-Coach", false, true);
+        gfx_disc(c, (float)cb.x + 14.0f, (float)cb.y + (float)cb.h / 2.0f, 4.5f, C_ACCENT_2,
+                 OPAQUE);
+    }
+    button(c, menu_item(l, 2, a->mode), "Einstellungen", false, true);
+    button(c, menu_item(l, 4, a->mode), "Elektroden", false, true);
     const profile_t *who = settings_person(a->ui);
     char label[PROFILE_NAME_BYTES + 12];
     snprintf(label, sizeof label, "Person: %s", who ? who->name : "Gast");
-    button(c, menu_item(l, 3), label, false, true);
+    button(c, menu_item(l, 3, a->mode), label, false, true);
 }
 
 // ------------------------------------------------------------------ Einstellungen
@@ -645,12 +667,16 @@ static box_t res_button(lay_t l, int i) {
     return l.portrait ? (box_t){XP[i], y, WP[i], 28} : (box_t){XL[i], y, WL[i], 28};
 }
 
+int result_pages(const app_t *a) {
+    return a->result_kind ? breath_result_pages() : APP_PAGES;
+}
+
 static void result_frame(app_t *a) {
     canvas_t *c = a->c;
     lay_t l = lay(a);
     gfx_fill(c, 0, 0, l.w, l.h, C_BG);
-    header(a, "Ergebnis", PAGE_NAMES[a->page]);
-    for (int i = 0; i < APP_PAGES; i++) {  // Seitenpunkte
+    header(a, "Ergebnis", a->result_kind ? breath_page_name(a->page) : PAGE_NAMES[a->page]);
+    for (int i = 0; i < result_pages(a); i++) {  // Seitenpunkte
         float cx = (float)(l.w - 80) + (float)i * 9.0f;
         gfx_disc(c, cx, 13.0f, i == a->page ? 3.2f : 2.4f, i == a->page ? C_ACCENT : C_TEXT_FAINT,
                  OPAQUE);
@@ -661,7 +687,7 @@ static void result_frame(app_t *a) {
         button(c, res_button(l, 0), "‹", false, a->page > 0);
         button(c, res_button(l, 1), "Kurve", false, true);
         button(c, res_button(l, 2), "Neu messen", true, true);
-        button(c, res_button(l, 3), "›", false, a->page < APP_PAGES - 1);
+        button(c, res_button(l, 3), "›", false, a->page < result_pages(a) - 1);
     } else {
         text_center(c, &FONT_SMALL, l.w / 2, l.footer_y + 22,
                     l.portrait ? "Tippen: weiter · Halten: Kurve"
@@ -1112,6 +1138,10 @@ static void draw_result(app_t *a) {
         text_center(a->c, &FONT_SMALL, l.w / 2, l.h / 2 + 4, why, C_TEXT_DIM);
         return;
     }
+    if (a->result_kind) {
+        breath_draw_result(a);
+        return;
+    }
     switch (a->page) {
         case 0:
             page_overview(a);
@@ -1263,7 +1293,15 @@ static void start_measure(app_t *a) {
     a->meas_usb_seen = a->usb;
     a->meas_test_blocks = 0;
     a->have_seq = false;
+    a->meas_mode = a->mode;
     monitor_set_measure(a->mon, true, 0, ANA_MAX_S);
+    if (a->mode == MODE_BREATH) {  // eigene Ansicht statt der laufenden Kurve
+        breath_live_reset(a);
+        a->screen = APP_BREATH_LIVE;
+        a->mon->draw = false;
+        redraw(a);
+        return;
+    }
     go_live(a);
 }
 
@@ -1293,6 +1331,12 @@ static void run_analysis(app_t *a) {
     a->n_checks = a->has_result ? check_build(a->res, a->meas_known ? &a->meas_profile : NULL,
                                               a->result_test, a->checks, CHK_MAX)
                                 : 0;
+    a->result_kind = 0;
+    if (a->meas_mode == MODE_BREATH) {
+        breath_finish(a);  // setzt result_kind und ersetzt das letzte EKG-Ergebnis
+        a->n_checks = 0;
+        a->result_status = ANA_OK;
+    }
     a->screen = APP_RESULT;
     a->page = 0;
     draw_result(a);
@@ -1300,7 +1344,7 @@ static void run_analysis(app_t *a) {
 }
 
 // ------------------------------------------------------------------ Bildaufbau
-static void redraw(app_t *a) {
+void redraw(app_t *a) {
     switch (a->screen) {
         case APP_LIVE:
             monitor_draw_all(a->mon);
@@ -1337,6 +1381,19 @@ static void redraw(app_t *a) {
             break;
         case APP_LEADS:
             draw_leads(a);
+            break;
+        case APP_BREATH_LIVE:
+            breath_draw_live(a);
+            break;
+        case APP_COACH:
+            coach_draw(a);
+            break;
+        case APP_PRIV_PIN:
+        case APP_PRIV_HOME:
+        case APP_PRIV_SESSION:
+        case APP_PRIV_DONE:
+        case APP_PRIV_HISTORY:
+            priv_draw(a);
             break;
     }
     if (a->toast_shown) {
@@ -1380,6 +1437,9 @@ void app_start(app_t *a, bool touch_hw_ok, uint32_t now) {
 void app_feed(app_t *a, const uint32_t *raw, int n, uint8_t flags, uint32_t factor,
               uint32_t seq) {
     monitor_feed(a->mon, raw, n, flags, factor);
+    if (a->measuring && a->meas_mode == MODE_BREATH) {
+        breath_live_feed(a);
+    }
     if (a->measuring && !a->measure_full) {
         if (a->have_seq) {
             uint32_t missing = seq - a->last_seq - 1u;
@@ -1526,6 +1586,7 @@ void app_calibrate(app_t *a) {
 }
 
 void app_event(app_t *a, ui_event_t ev, uint32_t now) {
+    a->clock = now;
     if (ev.type == EV_NONE) {
         return;
     }
@@ -1558,18 +1619,26 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
             if (!tap) {
                 break;
             }
-            if (hit(menu_item(l, 0), ev.x, ev.y)) {
+            if (hit(menu_mode(l, 0), ev.x, ev.y) || hit(menu_mode(l, 1), ev.x, ev.y)) {
+                a->mode = hit(menu_mode(l, 1), ev.x, ev.y) ? MODE_BREATH : MODE_EKG;
+                redraw(a);
+            } else if (hit(menu_item(l, 0, a->mode), ev.x, ev.y)) {
                 start_measure(a);
-            } else if (hit(menu_item(l, 1), ev.x, ev.y) && (a->has_result || a->result_status)) {
+            } else if (hit(menu_item(l, 1, a->mode), ev.x, ev.y) &&
+                       (a->mode == MODE_EKG ? (a->has_result || a->result_status) : a->has_breath)) {
+                a->result_kind = a->mode == MODE_BREATH;
                 a->screen = APP_RESULT;
                 a->page = 0;
                 redraw(a);
-            } else if (hit(menu_item(l, 2), ev.x, ev.y)) {
+            } else if (a->mode == MODE_BREATH && hit(menu_item(l, 5, a->mode), ev.x, ev.y)) {
+                coach_open(a, now);
+                redraw(a);
+            } else if (hit(menu_item(l, 2, a->mode), ev.x, ev.y)) {
                 a->screen = APP_SETTINGS;
                 redraw(a);
-            } else if (hit(menu_item(l, 4), ev.x, ev.y)) {
+            } else if (hit(menu_item(l, 4, a->mode), ev.x, ev.y)) {
                 open_leads(a, false);
-            } else if (hit(menu_item(l, 3), ev.x, ev.y)) {
+            } else if (hit(menu_item(l, 3, a->mode), ev.x, ev.y)) {
                 a->screen = APP_PROFILES;
                 redraw(a);
             } else if (hit(menu_close(l), ev.x, ev.y) || !hit(menu_panel(l), ev.x, ev.y)) {
@@ -1593,7 +1662,7 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
         case APP_RESULT:
             if (!a->touch_xy) {
                 if (tap) {
-                    a->page = (a->page + 1) % APP_PAGES;
+                    a->page = (a->page + 1) % result_pages(a);
                     redraw(a);
                 } else if (ev.type == EV_LONG) {
                     go_live(a);
@@ -1611,7 +1680,7 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
                 a->screen = APP_CHECK_DETAIL;
                 redraw(a);
             } else if (ev.type == EV_SWIPE_LEFT || (tap && hit(res_button(l, 3), ev.x, ev.y))) {
-                if (a->page < APP_PAGES - 1) {
+                if (a->page < result_pages(a) - 1) {
                     a->page++;
                     redraw(a);
                 }
@@ -1621,6 +1690,7 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
                     redraw(a);
                 }
             } else if (tap && hit(res_button(l, 2), ev.x, ev.y)) {
+                a->mode = a->result_kind ? MODE_BREATH : MODE_EKG;
                 start_measure(a);
             } else if ((tap && (hit(res_button(l, 1), ev.x, ev.y) ||
                                 hit(close_box(l), ev.x, ev.y))) ||
@@ -1657,10 +1727,19 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
             }
             break;
         case APP_INFO:
-            if (tap || ev.type == EV_LONG) {
+            if (tap && hit(info_version_box(l), ev.x, ev.y)) {
+                priv_tap_version(a, now);  // Zugang zu einem versteckten Bereich, ohne Hinweis
+            } else if (tap || ev.type == EV_LONG) {
                 a->screen = APP_SETTINGS;
                 redraw(a);
             }
+            break;
+        case APP_PRIV_PIN:
+        case APP_PRIV_HOME:
+        case APP_PRIV_SESSION:
+        case APP_PRIV_DONE:
+        case APP_PRIV_HISTORY:
+            priv_event(a, ev, now);
             break;
         case APP_PROFILES:
             if (ev.type == EV_LONG || (tap && hit(close_box(l), ev.x, ev.y))) {
@@ -1730,6 +1809,17 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
                 redraw(a);
             }
             break;
+        case APP_BREATH_LIVE:
+            if ((tap && ev.x >= l.w - 84 && ev.y <= 40) || (!a->touch_xy && ev.type == EV_LONG)) {
+                stop_measure(a, true, now);
+            }
+            break;
+        case APP_COACH:
+            if (ev.type == EV_LONG || (tap && coach_tap(a, ev.x, ev.y, now))) {
+                a->screen = APP_MENU;
+                redraw(a);
+            }
+            break;
         case APP_LEADS:
             if (!a->touch_xy) {
                 if (tap || ev.type == EV_LONG) {
@@ -1767,9 +1857,27 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
 }
 
 int app_frame(app_t *a, uint32_t now, rect_t *dirty, int max_dirty) {
+    a->clock = now;
+    if (a->screen == APP_BREATH_LIVE && now >= a->bl_draw_at && !a->toast_shown) {
+        a->bl_draw_at = now + 500;  // zweimal pro Sekunde genügt für die langsame Kurve
+        redraw(a);
+    }
     if (a->toast_shown && (int32_t)(now - a->toast_until) >= 0) {
         a->toast_shown = false;
         redraw(a);
+        return 0;
+    }
+    if (a->screen >= APP_PRIV_PIN && a->screen <= APP_PRIV_HISTORY) {
+        priv_frame(a, now);
+        return 0;
+    }
+    if (a->screen == APP_COACH) {
+        if (coach_frame(a, now)) {  // Übung zu Ende
+            char msg[48];
+            snprintf(msg, sizeof msg, "%d min geübt.", a->coach.dur_min);
+            a->screen = APP_MENU;
+            show_toast(a, msg, now);
+        }
         return 0;
     }
     if (a->screen == APP_ANALYZING) {

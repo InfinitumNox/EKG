@@ -15,8 +15,10 @@
 #include "gfx.h"
 #include "keyboard.h"
 #include "monitor.h"
+#include "private_data.h"
 #include "profile.h"
 #include "settings.h"
+#include "solo.h"
 
 typedef enum {
     APP_LIVE,
@@ -31,11 +33,64 @@ typedef enum {
     APP_KEYBOARD,      // Eingabe für ein Feld des Profils
     APP_CHECK_DETAIL,  // Erklärung zu einem Punkt der Check-Liste
     APP_LEADS,         // Anleitung: welche Elektrode wohin
+    APP_BREATH_LIVE,   // Atem-Messung läuft
+    APP_COACH,         // Atem-Coach
+    APP_PRIV_PIN,      // PIN eingeben oder festlegen
+    APP_PRIV_HOME,
+    APP_PRIV_SESSION,
+    APP_PRIV_DONE,
+    APP_PRIV_HISTORY,
 } app_screen_t;
 
 // Übersicht, Check, Verlauf, HRV, Schlagform, Hinweise
 #define APP_PAGES 6
 #define PAGE_CHECK 1
+
+typedef enum { MODE_EKG, MODE_BREATH } app_mode_t;
+
+// Zustand des privaten Bereichs (nur im RAM, bis gespeichert wird)
+typedef struct {
+    uint8_t pin_mode;  // 0 eingeben, 1 neu festlegen, 2 Wiederholung
+    bool changing;     // PIN ändern aus dem Bereich heraus
+    char digits[PRIV_PIN_DIGITS + 1];
+    char first[PRIV_PIN_DIGITS + 1];
+    int n_digits;
+    uint8_t fails;
+    uint32_t locked_until;
+    uint8_t prompt;    // 0 keine Rückfrage, 1 Sessions löschen, 2 PIN vergessen
+    uint32_t tap_at[5];
+    int n_taps;
+    // Session
+    solo_model_t model;
+    uint8_t hr[SOLO_MAX_S];  // Puls je Sekunde, 0 = Lücke
+    int n_s;
+    uint32_t sec_at, draw_at;
+    float start_hr;
+    int percent;             // -1: nicht gezeigt
+    priv_session_t last;     // Ergebnis der Session
+    int t90_s;               // Sekunde, in der die Anzeige 90 % erreichte, -1 nie
+} priv_ui_t;
+
+// Atem-Coach (eine Übung, nichts wird gespeichert)
+typedef struct {
+    uint8_t tempo;     // Atemzüge pro Minute, 4 bis 10
+    uint8_t dur_min;   // 2 oder 5
+    uint32_t t0;       // Beginn (oder letzte Änderung) in ms
+    uint32_t drawn_at, pulse_at;
+    int n_pulse;
+    uint8_t pulse[60];  // Puls je Sekunde der letzten Minute, 0 = fehlt
+} coach_t;
+
+// Reihe der Atem-Messung (ein Wert je Schlag)
+#define BL_MAX 360
+typedef struct {
+    int n;
+    double t[BL_MAX];  // Zeit des Schlags in s
+    double a[BL_MAX];  // QRS-Amplitude in mV
+    float hr[BL_MAX];  // Herzfrequenz beim Schlag
+    bool has_est;
+    double est_hz;     // laufende Schätzung (nur Amplitude, ab etwa 45 s)
+} breath_live_t;
 
 typedef struct {
     // vom Display-Task gesetzt
@@ -50,6 +105,7 @@ typedef struct {
     uint32_t display_id;
 
     app_screen_t screen;
+    app_mode_t mode;  // Betriebsart im Menü; nach dem Einschalten immer EKG (nicht gespeichert)
     bool touch_xy;  // Koordinaten nutzbar (eingerichtet)
 
     // Messung
@@ -71,6 +127,25 @@ typedef struct {
     check_item_t checks[CHK_MAX];
     int n_checks;
     int detail;  // gewählter Punkt der Check-Liste
+
+    // Atmung: laufende Messung und letztes Ergebnis (die Auswertung belegt die Aufnahme, ein
+    // Atem-Ergebnis ersetzt deshalb das letzte EKG-Ergebnis)
+    app_mode_t meas_mode;    // Betriebsart der laufenden Messung
+    uint8_t result_kind;     // gezeigtes Ergebnis: 0 EKG, 1 Atmung
+    bool has_breath;
+    ana_breath_t breath;
+    double breath_rmssd, breath_hr;
+    int breath_signal;       // 0 gut, 1 leicht, 2 stark gestört (check_quality)
+    bool breath_test;
+    breath_live_t bl;
+    coach_t coach;
+    priv_ui_t priv;
+    priv_data_t *pd;      // vom Display-Task: Daten des privaten Bereichs
+    bool req_priv_save;
+    uint32_t seen_beat_seq;
+    uint32_t bl_draw_at;     // nächste Aktualisierung der Atem-Ansicht
+    uint32_t clock;          // letzte bekannte Zeit (ms), für Ansichten ohne eigenen Zeitparameter
+    uint32_t bl_est_at;
 
     // Elektroden-Anleitung: öffnet sich von selbst, wenn die Elektroden lange keinen Kontakt haben
     bool leads_auto;        // von selbst geöffnet (schließt sich bei Kontakt wieder)

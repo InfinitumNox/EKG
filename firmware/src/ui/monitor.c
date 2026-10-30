@@ -555,6 +555,9 @@ void monitor_feed(monitor_t *m, const uint32_t *raw, int n, uint8_t flags, uint3
         m->index += k;
         for (size_t i = 0; i < nb; i++) {
             hr_add(&m->hr, beats[i].index);
+            m->beat_seq++;
+            m->beat_amp_mv = fabs(beats[i].amplitude_mv);
+            m->beat_t_s = (double)beats[i].index / 500.0;
             update_gain(m, beats[i].amplitude_mv);
             m->beat_pending = true;
         }

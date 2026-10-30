@@ -7,16 +7,28 @@
 #include <string.h>
 
 #include "app.h"
+#include "app_int.h"
 #include "avatar.h"
 #include "check.h"
 #include "gesture.h"
 #include "keyboard.h"
+#include "private_data.h"
 #include "settings.h"
+#include "solo.h"
 #include "protocol.h"
 #include "theme.h"
 #include "touchcal.h"
 
 static int failures;
+
+// Zufall für den Salt: im Test fest (nur der Ablauf zählt)
+void priv_random_bytes(uint8_t *out, size_t n) {
+    static uint32_t x = 12345u;
+    for (size_t i = 0; i < n; i++) {
+        x = x * 1664525u + 1013904223u;
+        out[i] = (uint8_t)(x >> 24);
+    }
+}
 
 #define CHECK(cond)                                                             \
     do {                                                                        \
@@ -112,6 +124,7 @@ static ana_recording_t rec;
 static ana_result_t res;
 static ui_settings_t ui;
 static app_t app;
+static priv_data_t pdata;
 
 static double ecg_mv(double t, double hr) {
     double rr = 60.0 / hr, ph = fmod(t, rr) - 0.5 * rr;
@@ -119,6 +132,9 @@ static double ecg_mv(double t, double hr) {
     v += 0.12 * exp(-0.5 * pow((ph + 0.16) / 0.025, 2)) + 0.3 * exp(-0.5 * pow((ph - 0.25) / 0.05, 2));
     return v;
 }
+
+// Signalquelle der Ablauf-Tests: Standard ist gleichmäßiger Puls; für die Atmung ersetzbar
+static double (*ecg_fn)(double t, double hr) = ecg_mv;
 
 static uint32_t mv_to_raw(double mv, int oversampling) {
     double v = mv / 1000.0 * 1100.0 + 1.65;
@@ -131,7 +147,7 @@ static void run_blocks_flags(double t0, double t1, double hr, int rate, uint32_t
     uint32_t raw[64];
     for (double t = t0; t < t1 - 1e-9; t += 0.05) {
         for (int i = 0; i < n; i++) {
-            raw[i] = mv_to_raw(ecg_mv(t + (double)i / rate, hr), os);
+            raw[i] = mv_to_raw(ecg_fn(t + (double)i / rate, hr), os);
         }
         uint32_t s = (*seq)++;
         if (skip_every && s % (uint32_t)skip_every == (uint32_t)skip_every - 1) {
@@ -162,6 +178,8 @@ static void setup_app(void) {
     ui.speed = MON_SPEED_25;
     ui.rotation = start_rotation;
     ui.person = PERSON_GUEST;
+    memset(&pdata, 0, sizeof pdata);
+    app.pd = &pdata;
     app.c = c;
     app.mon = &mon;
     app.rec = &rec;
@@ -296,7 +314,7 @@ static void test_portrait(void) {
 static void test_settings(void) {
     setup_app();
     tap(160, 120, 0);
-    tap(160, 166, 10);  // Einstellungen
+    tap(90, 166, 10);  // Einstellungen (links in der Zeile mit „Elektroden“)
     CHECK(app.screen == APP_SETTINGS);
     const float px_mm = 320.0f / 57.6f;
     CHECK(fabsf(mon.px_per_sample - 25.0f * px_mm / 500.0f) < 1e-4f);  // 25 mm/s
@@ -929,7 +947,7 @@ static void test_leads(void) {
     run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
     // Menü -> Elektroden (rechts neben dem letzten Ergebnis), Farben weiterschalten, Fertig
     tap(160, 120, 3000);
-    tap(230, 118, 3100);
+    tap(230, 166, 3100);  // Elektroden (rechts neben den Einstellungen)
     CHECK(app.screen == APP_LEADS && !app.leads_auto);
     tap(80, 222, 3200);
     CHECK(ui.cables == 1 && app.req_save);
@@ -982,12 +1000,431 @@ static void test_leads(void) {
     seq = 0;
     run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
     tap(120, 160, 3000);
-    tap(171, 156, 3100);
+    tap(171, 204, 3100);
     CHECK(app.screen == APP_LEADS);
     tap(60, 298, 3200);  // Farben
     CHECK(ui.cables == 1);
     tap(180, 298, 3300);  // Fertig
     CHECK(app.screen == APP_LIVE);
+}
+
+// ------------------------------------------------------------------ Atmung
+// EKG mit Atmung: Der Schlagabstand schwankt mit der Atemfrequenz (Atemrhythmus der Herzfrequenz),
+// die Höhe der R-Zacke ebenfalls.
+static double g_resp_hz = 0.25, g_rsa = 0.06, g_amp_mod = 0.15;
+static double beats_t[2400];
+static int n_beats_t, beat_cursor;
+
+static void make_beats(void) {
+    n_beats_t = 0;
+    beat_cursor = 0;
+    for (double t = 0.4; t < 160.0 && n_beats_t < 2400; n_beats_t++) {
+        beats_t[n_beats_t] = t;
+        t += 0.85 * (1.0 + g_rsa * sin(2.0 * M_PI * g_resp_hz * t));
+    }
+}
+
+static double breath_ecg(double t, double hr) {
+    (void)hr;
+    double v = 0.0;
+    while (beat_cursor > 0 && beats_t[beat_cursor - 1] > t - 0.5) {
+        beat_cursor--;
+    }
+    while (beat_cursor < n_beats_t && beats_t[beat_cursor] < t - 0.5) {
+        beat_cursor++;
+    }
+    for (int i = beat_cursor; i < n_beats_t && beats_t[i] < t + 0.4; i++) {
+        double ph = t - beats_t[i];
+        double k = 1.0 + g_amp_mod * sin(2.0 * M_PI * g_resp_hz * beats_t[i]);
+        v += k * (1.1 * exp(-0.5 * pow(ph / 0.012, 2)) - 0.15 * exp(-0.5 * pow((ph - 0.03) / 0.01, 2)) +
+                  0.12 * exp(-0.5 * pow((ph + 0.16) / 0.025, 2)) +
+                  0.3 * exp(-0.5 * pow((ph - 0.25) / 0.05, 2)));
+    }
+    return v;
+}
+
+static void breath_measure(double resp_hz, double rsa, double amp_mod, uint32_t *seq) {
+    g_resp_hz = resp_hz;
+    g_rsa = rsa;
+    g_amp_mod = amp_mod;
+    make_beats();
+    ecg_fn = breath_ecg;
+    setup_app();
+    *seq = 0;
+    run_blocks(0.0, 3.0, 70.0, 500, seq, 0);
+    tap(160, 120, 3000);  // Menü
+    CHECK(app.screen == APP_MENU && app.mode == MODE_EKG);
+    tap(136, 28, 3050);  // Umschalter: Atmung
+    CHECK(app.mode == MODE_BREATH);
+    tap(160, 69, 3100);  // Atmung messen
+    CHECK(app.measuring && app.screen == APP_BREATH_LIVE);
+}
+
+static void test_breath(void) {
+    uint32_t seq;
+    breath_measure(0.25, 0.06, 0.15, &seq);
+    run_blocks(3.0, 40.0, 70.0, 500, &seq, 0);
+    CHECK(app.bl.n > 30 && !app.bl.has_est);  // erst ab 45 s eine Schätzung
+    run_blocks(40.0, 110.0, 70.0, 500, &seq, 0);
+    CHECK(app.bl.has_est && fabs(app.bl.est_hz * 60.0 - 15.0) < 2.0);
+    run_blocks(110.0, 3.0 + ANA_MAX_S + 2.0, 70.0, 500, &seq, 0);
+    CHECK(app.screen == APP_RESULT && app.result_kind == 1 && app.has_breath);
+    CHECK(app.breath.why == BR_OK && fabs(app.breath.rate_hz * 60.0 - 15.0) < 1.0);
+    CHECK(app.breath.has_swing && app.breath.swing_bpm > 1.0);
+    CHECK(app.breath.curve_n > 440 && app.breath.n_cycles >= 26 && app.breath.n_cycles <= 33);
+    CHECK(app.breath.cycle_cv >= 0.0 && app.breath.cycle_cv < 0.15);
+    CHECK(!app.has_result);  // die Auswertung hat das EKG-Ergebnis ersetzt
+    // Seiten: Übersicht, Kurve, Hinweise
+    for (int i = 0; i < 5; i++) {
+        app_event(&app, (ui_event_t){EV_SWIPE_LEFT, 0, 0, 0, 0, true}, 131000 + (uint32_t)i);
+    }
+    CHECK(app.page == 2 && result_pages(&app) == 3);
+    // zurück zur Kurve, Menü: „Letztes Ergebnis“ im Atem-Modus
+    tap(100, 222, 131100);
+    CHECK(app.screen == APP_LIVE);
+    tap(160, 120, 131200);
+    tap(60, 118, 131210);  // links in der Zeile, Modus ist noch Atmung
+    CHECK(app.screen == APP_RESULT && app.result_kind == 1 && app.page == 0);
+    tap(310, 12, 131300);
+    CHECK(app.screen == APP_LIVE);
+    // EKG-Modus: kein letztes EKG-Ergebnis (ersetzt)
+    tap(160, 120, 131400);
+    tap(60, 28, 131410);  // Umschalter EKG
+    CHECK(app.mode == MODE_EKG);
+    tap(160, 118, 131420);  // „Letztes Ergebnis“ ist gesperrt
+    CHECK(app.screen == APP_MENU);
+    tap(310, 12, 131500);
+
+    // ohne Atemschwankung gibt es keinen Wert, aber ein Ergebnis mit Begründung
+    breath_measure(0.25, 0.0, 0.0, &seq);
+    run_blocks(3.0, 3.0 + ANA_MAX_S + 2.0, 70.0, 500, &seq, 0);
+    CHECK(app.screen == APP_RESULT && app.has_breath && app.breath.why != BR_OK);
+    ecg_fn = ecg_mv;
+
+    // Stopp vor 30 s: zu kurz, nichts wird gespeichert
+    breath_measure(0.25, 0.06, 0.15, &seq);
+    run_blocks(3.0, 15.0, 70.0, 500, &seq, 0);
+    tap(300, 12, 15000);
+    CHECK(!app.measuring && app.screen == APP_LIVE && app.toast_shown);
+    ecg_fn = ecg_mv;
+}
+
+static void test_coach(void) {
+    setup_app();
+    uint32_t seq = 0;
+    run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
+    tap(160, 120, 3000);
+    tap(136, 28, 3010);  // Atmung
+    app.req_save = false;
+    tap(230, 118, 3100);  // Atem-Coach
+    CHECK(app.screen == APP_COACH && app.coach.tempo == 6 && app.coach.dur_min == 2);
+    rect_t d[16];
+    for (uint32_t t = 3200; t < 8200; t += 100) {  // 5 s: Einatmen
+        app_frame(&app, t, d, 16);
+    }
+    CHECK(app.coach.n_pulse >= 4);
+    tap(297, 69, 8300);  // Tempo +
+    CHECK(app.coach.tempo == 7);
+    tap(207, 69, 8310);  // Tempo −
+    tap(207, 69, 8320);
+    CHECK(app.coach.tempo == 5);
+    tap(283, 122, 8330);  // 5 min
+    CHECK(app.coach.dur_min == 5 && app.screen == APP_COACH);
+    for (uint32_t t = 8400; t < 8330 + 5u * 60000u - 500u; t += 500) {
+        app_frame(&app, t, d, 16);
+    }
+    CHECK(app.screen == APP_COACH);
+    for (uint32_t t = 8330 + 5u * 60000u - 500u; t < 8330 + 5u * 60000u + 1500u; t += 100) {
+        app_frame(&app, t, d, 16);
+    }
+    CHECK(app.screen == APP_MENU && app.toast_shown && strstr(app.toast, "5 min"));
+    CHECK(!app.req_save);  // nichts wird gespeichert
+    // abbrechen mit dem Kreuz
+    tap(160, 118, 400000);
+    CHECK(app.screen == APP_MENU);  // in der Mitte zwischen den Hälften: nichts
+    tap(230, 118, 400100);
+    CHECK(app.screen == APP_COACH);
+    tap(310, 12, 400200);
+    CHECK(app.screen == APP_MENU);
+}
+
+// ------------------------------------------------------------------ Privater Bereich
+static void test_private_data(void) {
+    // SHA-256 mit bekannten Werten
+    uint8_t h[32];
+    priv_sha256((const uint8_t *)"abc", 3, h);
+    const uint8_t abc[8] = {0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea};
+    CHECK(memcmp(h, abc, 8) == 0 && h[31] == 0xad);
+    priv_sha256((const uint8_t *)"", 0, h);
+    CHECK(h[0] == 0xe3 && h[1] == 0xb0 && h[31] == 0x55);
+    char long_msg[200];
+    memset(long_msg, 'a', sizeof long_msg);
+    priv_sha256((const uint8_t *)long_msg, sizeof long_msg, h);  // über mehrere Blöcke
+    CHECK(h[0] != 0 || h[1] != 0);
+
+    priv_data_t d, e;
+    priv_clear(&d);
+    CHECK(!priv_check_pin(&d, "0000"));
+    priv_set_pin(&d, "4711");
+    CHECK(priv_check_pin(&d, "4711") && !priv_check_pin(&d, "4712") && !priv_check_pin(&d, "1147"));
+    priv_session_t s1 = {.duration_s = 600, .hr_start = 70, .hr_peak = 125};
+    for (int i = 0; i < PRIV_SESSIONS + 3; i++) {
+        s1.hr_peak = (uint8_t)(100 + i);
+        priv_add_session(&d, &s1);
+    }
+    CHECK(d.n == PRIV_SESSIONS && d.s[0].hr_peak == 103 && d.s[PRIV_SESSIONS - 1].hr_peak == 122);
+    d.display_mode = 1;
+    uint8_t buf[PRIV_RECORD_BYTES];
+    CHECK(priv_encode(&d, buf, sizeof buf) == PRIV_RECORD_BYTES);
+    CHECK(priv_encode(&d, buf, 100) == 0);
+    priv_decode(buf, &e);
+    CHECK(e.has_pin && e.display_mode == 1 && e.n == PRIV_SESSIONS);
+    CHECK(priv_check_pin(&e, "4711") && e.s[5].hr_peak == 108);
+    // beschädigt: leer, ohne PIN
+    buf[100] ^= 1;
+    priv_decode(buf, &e);
+    CHECK(!e.has_pin && e.n == 0);
+    memset(buf, 0xFF, sizeof buf);  // leerer Flash
+    priv_decode(buf, &e);
+    CHECK(!e.has_pin && e.n == 0);
+}
+
+static void test_solo(void) {
+    priv_data_t d;
+    priv_clear(&d);
+    solo_model_t m;
+    solo_build(&d, &m);
+    CHECK(!m.learned && m.n == 0 && solo_percent(&m, 70, 100) == -1);
+    const int peaks[] = {120, 124, 126};
+    for (int i = 0; i < 3; i++) {
+        priv_session_t x = {.duration_s = (uint16_t)(540 + 60 * i), .hr_start = 70,
+                            .hr_peak = (uint8_t)peaks[i]};
+        priv_add_session(&d, &x);
+        solo_build(&d, &m);
+        CHECK(m.n == i + 1 && m.learned == (i >= 2));
+    }
+    CHECK(m.confident && fabsf(m.gain - 54.0f) < 0.01f && m.peak == 124.0f);
+    CHECK(m.t_med == 600 && m.t_lo == 570 && m.t_hi == 630);
+    CHECK(solo_percent(&m, 70, 70) == 0 && solo_percent(&m, 70, 97) == 50);
+    CHECK(solo_percent(&m, 70, 200) == 100 && solo_percent(&m, 70, 60) == 0);
+    // nicht gewertete Sessions zählen nicht
+    priv_session_t bad = {.duration_s = 100, .hr_start = 70, .hr_peak = 71, .flags = PRIV_EXCLUDED};
+    priv_add_session(&d, &bad);
+    solo_build(&d, &m);
+    CHECK(m.n == 3 && fabsf(m.gain - 54.0f) < 0.01f);
+    // stark verschiedene Anstiege: keine Prozentanzeige
+    priv_clear(&d);
+    const int pk[] = {90, 140, 105};
+    for (int i = 0; i < 3; i++) {
+        priv_session_t x = {.duration_s = 600, .hr_start = 70, .hr_peak = (uint8_t)pk[i]};
+        priv_add_session(&d, &x);
+    }
+    solo_build(&d, &m);
+    CHECK(m.learned && !m.confident && solo_percent(&m, 70, 100) == -1);
+
+    // Auswertung einer Session aus dem Puls je Sekunde
+    static uint8_t hr[700];
+    for (int i = 0; i < 600; i++) {
+        hr[i] = (uint8_t)(70 + (i < 60 ? 0 : (i - 60) * 55 / 540));
+    }
+    for (int i = 100; i < 110; i++) {
+        hr[i] = 0;  // Lücke
+    }
+    priv_session_t out;
+    CHECK(solo_summarize(hr, 600, &out));
+    CHECK(out.duration_s == 600 && out.hr_start == 70 && out.hr_peak >= 123 && out.hr_peak <= 125);
+    CHECK(out.curve[0] == 70 && out.curve[PRIV_CURVE - 1] >= 120);
+    CHECK(fabsf(solo_start(hr, 600) - 70.0f) < 0.01f);
+    const int t90 = solo_t90(hr, 600, 70.0f, 55.0f);
+    CHECK(t90 > 520 && t90 < 560);
+    CHECK(solo_t90(hr, 100, 70.0f, 200.0f) == -1);
+    CHECK(!solo_summarize(hr, 10, &out));  // zu wenige Werte
+    memset(hr, 0, sizeof hr);
+    CHECK(!solo_summarize(hr, 300, &out));
+}
+
+// Tastenfeld der PIN-Eingabe (quer): Mitte der Taste
+static void pad(char k, uint32_t now) {
+    const char *keys = "789456123<0K";
+    const int i = (int)(strchr(keys, k) - keys);
+    tap(24 + (i % 3) * 91 + 45, 70 + (i / 3) * 42 + 21, now);
+}
+
+static void pad_pin(const char *digits, uint32_t now) {
+    for (int i = 0; digits[i]; i++) {
+        pad(digits[i], now + (uint32_t)i * 20u);
+    }
+    pad('K', now + 200u);
+}
+
+static void secret_taps(uint32_t t0, int n, uint32_t gap) {
+    for (int i = 0; i < n; i++) {
+        tap(160, 45, t0 + (uint32_t)i * gap);
+    }
+}
+
+static void to_info(uint32_t t0) {
+    tap(160, 120, t0);
+    tap(90, 166, t0 + 10);
+    tap(160, 223, t0 + 20);
+    CHECK(app.screen == APP_INFO);
+}
+
+static double T;  // Zeit der Ablauf-Tests in s
+
+static uint32_t seq_priv;
+
+static void advance_seq(double dt) {
+    run_blocks(T, T + dt, 70.0, 500, &seq_priv, 0);
+    T += dt;
+}
+
+static void make_ramp(double t_from, double t_start, double dur, double hr0, double hr1) {
+    n_beats_t = 0;
+    beat_cursor = 0;
+    g_amp_mod = 0.0;
+    for (double t = t_from; t < t_start + dur + 120.0 && n_beats_t < 2400; n_beats_t++) {
+        beats_t[n_beats_t] = t;
+        double u = (t - t_start) / dur;
+        u = u < 0 ? 0 : u > 1 ? 1 : u;
+        t += 60.0 / (hr0 + (hr1 - hr0) * u * u);
+    }
+}
+
+// Eine Session von 200 s: 40 s Ruhe, dann steigender Puls bis peak; speichert wie angegeben
+static void solo_session(int peak, bool counted, bool check_percent) {
+    make_ramp(T, T + 40.0, 155.0, 70.0, (double)peak);
+    const double t0 = T;
+    tap(160, 69, (uint32_t)(T * 1000.0));  // Solo-Session starten
+    CHECK(app.screen == APP_PRIV_SESSION);
+    advance_seq(179.0);
+    if (check_percent) {
+        CHECK(app.priv.model.confident);
+        CHECK(app.priv.percent >= 70 && app.priv.percent <= 95);
+    }
+    advance_seq(t0 + 200.0 - T);
+    tap(160, 212, (uint32_t)(T * 1000.0));  // Fertig
+    CHECK(app.screen == APP_PRIV_DONE);
+    CHECK(app.priv.last.duration_s >= 199 && app.priv.last.duration_s <= 201);
+    CHECK(abs(app.priv.last.hr_start - 70) <= 3 && abs(app.priv.last.hr_peak - peak) <= 6);
+    tap(counted ? 240 : 80, 216, (uint32_t)(T * 1000.0));
+    CHECK(app.screen == APP_PRIV_HOME && app.req_priv_save);
+    app.req_priv_save = false;
+}
+
+static void test_private_flow(void) {
+    make_ramp(0.4, 1e9, 1.0, 70.0, 70.0);
+    ecg_fn = breath_ecg;
+    setup_app();
+    seq_priv = 0;
+    T = 0.0;
+    advance_seq(3.0);
+
+    // Zugang: vier schnelle Tipps genügen nicht, ein langsamer fünfter auch nicht
+    to_info(3000);
+    secret_taps(3100, 4, 150);
+    tap(160, 45, 5200);  // zu spät: zählt neu
+    CHECK(app.screen == APP_INFO);
+    tap(310, 12, 6000);  // × oben rechts liegt außerhalb der Versionszeile
+    CHECK(app.screen == APP_SETTINGS);
+    tap(160, 223, 6100);
+    secret_taps(6200, 5, 150);
+    CHECK(app.screen == APP_PRIV_PIN && app.priv.pin_mode == 1);  // PIN festlegen
+
+    // PIN festlegen: zweite Eingabe abweichend, dann richtig
+    pad_pin("1234", 7000);
+    CHECK(app.priv.pin_mode == 2);
+    pad_pin("1235", 7500);
+    CHECK(app.priv.pin_mode == 1 && !pdata.has_pin && app.toast_shown);
+    pad_pin("1234", 8000);
+    pad_pin("1234", 8500);
+    CHECK(app.screen == APP_PRIV_HOME && pdata.has_pin && app.req_priv_save);
+    CHECK(priv_check_pin(&pdata, "1234"));
+    app.req_priv_save = false;
+
+    // Verlassen, neu öffnen: PIN wird verlangt; falsche Eingaben sperren
+    tap(310, 12, 9000);
+    CHECK(app.screen == APP_LIVE);
+    to_info(9100);
+    secret_taps(9200, 5, 150);
+    CHECK(app.screen == APP_PRIV_PIN && app.priv.pin_mode == 0);
+    pad_pin("1111", 10000);
+    pad_pin("2222", 10500);
+    CHECK(app.screen == APP_PRIV_PIN && app.priv.fails == 2);
+    pad_pin("3333", 11000);
+    CHECK(app.priv.locked_until > 11000u);
+    pad_pin("1234", 12000);  // gesperrt: auch die richtige PIN zählt nicht
+    CHECK(app.screen == APP_PRIV_PIN);
+    pad_pin("1234", 42000);
+    CHECK(app.screen == APP_PRIV_HOME);
+
+    // Sessions: drei lernen, die vierte zeigt die Annäherung
+    T = 43.0;
+    advance_seq(5.0);
+    CHECK(!app.usb);
+    const int peaks[] = {120, 124, 126, 122};
+    for (int i = 0; i < 4; i++) {
+        solo_session(peaks[i], true, i == 3);
+        CHECK(pdata.n == i + 1);
+        advance_seq(5.0);
+    }
+    solo_build(&pdata, &app.priv.model);
+    CHECK(app.priv.model.n == 4 && app.priv.model.learned);
+
+    // „Nicht werten“ speichert, geht aber nicht ins Modell ein
+    solo_session(140, false, false);
+    solo_build(&pdata, &app.priv.model);
+    CHECK(pdata.n == 5 && (pdata.s[4].flags & PRIV_EXCLUDED) && app.priv.model.n == 4);
+    advance_seq(5.0);
+
+    // USB steckt: Start gesperrt; kommt USB während der Session, bricht sie ab
+    app_set_status(&app, true, false);
+    tap(160, 69, (uint32_t)(T * 1000.0));
+    CHECK(app.screen == APP_PRIV_HOME && app.toast_shown);
+    app_set_status(&app, false, false);
+    advance_seq(3.0);
+    make_ramp(T, T + 40.0, 155.0, 70.0, 120.0);
+    tap(160, 69, (uint32_t)(T * 1000.0));
+    CHECK(app.screen == APP_PRIV_SESSION);
+    advance_seq(30.0);
+    app_set_status(&app, true, false);
+    advance_seq(2.0);
+    CHECK(app.screen == APP_PRIV_HOME && pdata.n == 5);
+    app_set_status(&app, false, false);
+    advance_seq(60.0);  // Toast läuft ab
+
+    // Verlauf, Anzeige, Löschen
+    tap(80, 176, (uint32_t)(T * 1000.0));
+    CHECK(app.screen == APP_PRIV_HISTORY);
+    tap(310, 12, (uint32_t)(T * 1000.0 + 10));
+    CHECK(app.screen == APP_PRIV_HOME);
+    tap(236, 176, (uint32_t)(T * 1000.0 + 20));
+    CHECK(pdata.display_mode == 1 && app.req_priv_save);
+    tap(236, 216, (uint32_t)(T * 1000.0 + 30));  // Daten löschen: erst die Rückfrage
+    CHECK(app.priv.prompt == 1 && pdata.n == 5);
+    tap(100, 155, (uint32_t)(T * 1000.0 + 40));  // Abbrechen
+    CHECK(app.priv.prompt == 0 && pdata.n == 5);
+    tap(236, 216, (uint32_t)(T * 1000.0 + 50));
+    tap(240, 155, (uint32_t)(T * 1000.0 + 60));  // Löschen
+    CHECK(pdata.n == 0 && pdata.has_pin);
+
+    // PIN ändern aus dem Bereich heraus
+    tap(80, 216, (uint32_t)(T * 1000.0 + 70));
+    CHECK(app.screen == APP_PRIV_PIN && app.priv.pin_mode == 1 && app.priv.changing);
+    pad_pin("9876", (uint32_t)(T * 1000.0 + 100));
+    pad_pin("9876", (uint32_t)(T * 1000.0 + 600));
+    CHECK(app.screen == APP_PRIV_HOME && priv_check_pin(&pdata, "9876") && !priv_check_pin(&pdata, "1234"));
+
+    // PIN vergessen: ‹ lange halten, bestätigen: alles gelöscht, neue PIN
+    tap(310, 12, (uint32_t)(T * 1000.0 + 2000));
+    to_info((uint32_t)(T * 1000.0 + 3000));
+    secret_taps((uint32_t)(T * 1000.0 + 3100), 5, 150);
+    CHECK(app.screen == APP_PRIV_PIN && app.priv.pin_mode == 0);
+    app_event(&app, (ui_event_t){EV_LONG, 69, 217, 0, 0, true}, (uint32_t)(T * 1000.0 + 4500));
+    CHECK(app.priv.prompt == 2);
+    tap(240, 155, (uint32_t)(T * 1000.0 + 4600));
+    CHECK(!pdata.has_pin && app.screen == APP_PRIV_PIN && app.priv.pin_mode == 1);
+    ecg_fn = ecg_mv;
 }
 
 int main(void) {
@@ -1009,6 +1446,11 @@ int main(void) {
     test_profiles_portrait();
     test_avatar();
     test_leads();
+    test_breath();
+    test_coach();
+    test_private_data();
+    test_solo();
+    test_private_flow();
     if (failures) {
         fprintf(stderr, "%d Fehler\n", failures);
         return 1;

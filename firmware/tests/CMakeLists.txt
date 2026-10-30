@@ -23,12 +23,17 @@ add_executable(test_ui
     ../src/ui/app.c
     ../src/ui/assets.c
     ../src/ui/avatar.c
+    ../src/ui/breath.c
+    ../src/ui/coach.c
     ../src/ui/check.c
     ../src/ui/gesture.c
     ../src/ui/gfx.c
     ../src/ui/keyboard.c
     ../src/ui/monitor.c
+    ../src/ui/private_data.c
+    ../src/ui/privat.c
     ../src/ui/profile.c
+    ../src/ui/solo.c
     ../src/ui/theme.c
     ../src/ui/touchcal.c
     ../src/display/settings_codec.c
