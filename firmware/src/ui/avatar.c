@@ -1,6 +1,6 @@
-// Figur wie eine Gliederpuppe: Jedes Körperteil ist ein Abstandsfeld (Kapsel mit wechselndem
+// Flache Figur mit runden Formen: Jedes Körperteil ist ein Abstandsfeld (Kapsel mit wechselndem
 // Radius, Kreis, Rumpfprofil); „smin“ verschmilzt sie ohne Knick, die Kantenglättung folgt aus
-// dem Abstand zum Rand. Die Rundung entsteht aus der Randrichtung mit Licht von links oben.
+// dem Abstand zum Rand.
 
 #include "avatar.h"
 
@@ -228,29 +228,13 @@ static void build_figure(figure_t *f, const avatar_t *av, float k, float fh, flo
 #undef PY
 }
 
-// ------------------------------------------------------------------ Farben und Licht
-// Hautton, Kleidung und Haar sind für beide Anzeigen gleich; die Figur soll wie ein Mensch aussehen.
-#define SKIN 0xD9A98Au
-#define CLOTH 0x34476Eu
-#define HAIR_DARK 0x3A2A20u
-#define HAIR_LONG 0x59392Au
-
-static uint32_t lit(uint32_t base, float i) {
-    // i 0 … 1: dunkel bis hell; 0,6 ist die Grundfarbe
-    if (i < 0.6f) {
-        return gfx_mix(0x000000u, base, (int)(i / 0.6f * 256.0f));
+// ------------------------------------------------------------------ Zeichnen
+// Flache 2D-Figur: eine Farbe im Ton der Anzeige, Haare etwas dunkler, geglättete Ränder
+static void cover(canvas_t *c, int x, int y, float d, uint32_t rgb) {
+    const float cov = clampf(0.5f - d, 0.0f, 1.0f);
+    if (cov > 0.0f) {
+        gfx_blend(c, x, y, rgb, (int)(cov * 256.0f));
     }
-    return gfx_mix(base, 0xFFFFFFu, (int)((i - 0.6f) / 0.4f * 70.0f));
-}
-
-// Licht von links oben: Randrichtung (gx, gy aus dem Abstandsfeld) und Tiefe t (0 am Rand, 1 innen)
-static float light(float gx, float gy, float t) {
-    const float nz = sqrtf(clampf(1.0f - (1.0f - t) * (1.0f - t), 0.0f, 1.0f));
-    const float s = sqrtf(clampf(1.0f - nz * nz, 0.0f, 1.0f));
-    const float len = sqrtf(gx * gx + gy * gy) + 1e-6f;
-    const float nx = gx / len * s, ny = gy / len * s;
-    const float dot = nx * -0.45f + ny * -0.55f + nz * 0.70f;
-    return clampf(0.22f + 0.78f * dot, 0.0f, 1.0f) * 0.92f + 0.08f;
 }
 
 void avatar_draw(canvas_t *c, int bx, int by, int bw, int bh, const avatar_t *av,
@@ -267,64 +251,32 @@ void avatar_draw(canvas_t *c, int bx, int by, int bw, int bh, const avatar_t *av
     const float top = (float)(by + bh) - fh;
     figure_t f;
     build_figure(&f, av, k, fh, cx, top);
-    const float depth = fmaxf(2.5f, 0.060f * fh);
-    const bool female = av->sex == SEX_FEMALE;
+    const uint32_t fill = gfx_mix(C_PANEL_EDGE, C_TEXT_FAINT, 128);
+    const uint32_t hair = gfx_mix(fill, 0x000000u, 100);
 
-    // Haare hinter dem Kopf: Frauen lang, sonst kurz
-    {
-        const uint32_t hair = female ? HAIR_LONG : HAIR_DARK;
+    // Haare hinter dem Kopf: Frauen lang, Männer kurz, neutral ohne
+    if (av->sex != SEX_UNKNOWN) {
         const cap_t mane = {cx, f.hy, cx, top + 0.205f * fh, f.hr * 1.16f, f.hr * 0.98f};
         const int y1 = (int)ceilf(top + 0.235f * fh);
         const int x0 = (int)floorf(cx - 0.12f * fh), x1 = (int)ceilf(cx + 0.12f * fh);
         for (int y = (int)floorf(top) - 2; y <= y1; y++) {
             for (int x = x0; x <= x1; x++) {
                 const float px = (float)x + 0.5f, py = (float)y + 0.5f;
-                const float d = female ? sd_cap(&mane, px, py)
-                                       : sd_circle(cx, f.hy - 0.22f * f.hr, f.hr * 1.06f, px, py);
-                const float cov = clampf(0.5f - d, 0.0f, 1.0f);
-                if (cov > 0.0f) {
-                    const float tt = clampf(-d / (0.5f * f.hr), 0.0f, 1.0f);
-                    gfx_blend(c, x, y, lit(hair, 0.45f + 0.30f * tt), (int)(cov * 256.0f));
-                }
+                const float d = av->sex == SEX_FEMALE
+                                    ? sd_cap(&mane, px, py)
+                                    : sd_circle(cx, f.hy - 0.22f * f.hr, f.hr * 1.06f, px, py);
+                cover(c, x, y, d, hair);
             }
         }
     }
 
-    // Körper Pixel für Pixel
+    // Körper
     const float half = reach * fh + 3.0f;
     const int x0 = (int)floorf(cx - half), x1 = (int)ceilf(cx + half);
     const int y0 = (int)floorf(top) - 1, y1 = by + bh;
-    const float waistband = top + (female ? 0.468f : 0.458f) * fh, hem = top + 0.628f * fh;
-    const float bra_top = top + 0.262f * fh, bra_bottom = top + 0.322f * fh;
     for (int y = y0; y <= y1; y++) {
         for (int x = x0; x <= x1; x++) {
-            const float px = (float)x + 0.5f, py = (float)y + 0.5f;
-            const float d = body_sd(&f, px, py);
-            const float cov = clampf(0.5f - d, 0.0f, 1.0f);
-            if (cov <= 0.0f) {
-                continue;
-            }
-            const float gx = body_sd(&f, px + 1.0f, py) - d, gy = body_sd(&f, px, py + 1.0f) - d;
-            const float i = light(gx, gy, clampf(-d / depth, 0.0f, 1.0f));
-            uint32_t base = SKIN;
-            // Shorts (Rumpf und Beine) und bei Frauen ein Top über der Brust
-            float cloth = 0.0f;
-            if (py > waistband - 1.0f && py < hem + 1.0f) {
-                float dc = torso_sd(&f, px, py);
-                for (int s = 0; s < 2; s++) {
-                    dc = fminf(dc, sd_cap(&f.leg[s][0], px, py));
-                }
-                cloth = clampf(0.5f - dc, 0.0f, 1.0f) * clampf(py - waistband + 0.5f, 0.0f, 1.0f) *
-                        clampf(hem - py + 0.5f, 0.0f, 1.0f);
-            } else if (female && py > bra_top - 1.0f && py < bra_bottom + 1.0f) {
-                cloth = clampf(0.5f - chest_sd(&f, px, py), 0.0f, 1.0f) *
-                        clampf(py - bra_top + 0.5f, 0.0f, 1.0f) *
-                        clampf(bra_bottom - py + 0.5f, 0.0f, 1.0f);
-            }
-            if (cloth > 0.0f) {
-                base = gfx_mix(SKIN, CLOTH, (int)(cloth * 256.0f));
-            }
-            gfx_blend(c, x, y, lit(base, i), (int)(cov * 256.0f));
+            cover(c, x, y, body_sd(&f, (float)x + 0.5f, (float)y + 0.5f), fill);
         }
     }
 

@@ -82,8 +82,7 @@ P-Welle, was für die Rhythmusbeurteilung gut ist:
 Tabelle (Ableitung II) und der Farbe jedes Kabels. Ohne Kontakt länger als 4 s (und ohne laufende Messung)
 öffnet sie sich von selbst; die Elektrode ohne Kontakt ist rot umrandet und mit „!“ markiert (LO+ meldet LA,
 LO− meldet RA; für RL gibt es keine Kontaktmeldung). Haben alle Kontakt, schließt sie sich nach 1,5 s. Die
-Figur ist eine Gliederpuppe mit Hautton, Haaren, Shorts (Frauen zusätzlich ein Top über der Brust, die
-Elektrodenstellen bleiben frei) und Licht von links oben. Sie folgt dem aktiven Profil (Geschlecht, Größe, BMI)
+Figur ist eine flache Silhouette mit runden Formen (Frauen mit langen, Männer mit kurzen Haaren). Sie folgt dem aktiven Profil (Geschlecht, Größe, BMI)
 oder ist eine Standardfigur (Einstellungen → Avatar). Es ist eine Näherung, kein Körperscan.
 
 **Kabelfarben:** Klon-Kabel sind nicht einheitlich gefärbt. „Farben“ in der Anleitung schaltet zwischen drei

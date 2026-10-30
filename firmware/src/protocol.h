@@ -15,7 +15,7 @@
 
 #define EKG_FW_VERSION_MAJOR 0u
 #define EKG_FW_VERSION_MINOR 7u
-#define EKG_FW_VERSION_PATCH 1u
+#define EKG_FW_VERSION_PATCH 2u
 
 enum ekg_frame_type {
     EKG_FRAME_SAMPLES = 0x01,
