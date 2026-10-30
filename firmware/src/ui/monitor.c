@@ -536,7 +536,8 @@ void monitor_feed(monitor_t *m, const uint32_t *raw, int n, uint8_t flags, uint3
         double v = sum * (VREF_V / ADC_STEPS / conv_factor);
         x[k++] = (v - VREF_V / 2.0) / GAIN * 1000.0;
     }
-    bool lead_off = (flags & (EKG_FLAG_LO_PLUS | EKG_FLAG_LO_MINUS)) != 0;
+    m->lead_flags = flags & (EKG_FLAG_LO_PLUS | EKG_FLAG_LO_MINUS);
+    bool lead_off = m->lead_flags != 0;
     bool clip = (flags & EKG_FLAG_CLIP) != 0;
     if (clip) {
         m->clip_until = m->blocks + 20;  // eine Sekunde lang anzeigen

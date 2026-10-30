@@ -51,7 +51,7 @@ typedef struct {
     uint8_t gain;
     uint8_t speed;
     uint8_t person;
-    uint8_t reserved;
+    uint8_t opts;  // Bit 0: Standardfigur, Bit 2–3: Kabelfarben
     float cal[6];
     profile_t profiles[PROFILE_COUNT];
     uint32_t check;
@@ -104,6 +104,11 @@ void settings_decode(const void *flash, ui_settings_t *s) {
         s->gain = st.gain <= 3 ? st.gain : 0;
         s->speed = st.speed <= 2 ? st.speed : 1;
         s->person = st.person <= PERSON_GUEST ? st.person : PERSON_GUEST;
+        s->avatar = st.opts & 1u;
+        s->cables = (st.opts >> 2) & 3u;
+        if (s->cables >= CABLE_PRESETS) {
+            s->cables = 0;
+        }
         s->cal = cal_from(st.cal);
         for (int i = 0; i < PROFILE_COUNT; i++) {
             s->profiles[i] = st.profiles[i];
@@ -144,6 +149,7 @@ size_t settings_encode(const ui_settings_t *s, uint8_t *page, size_t page_size) 
     st.gain = s->gain;
     st.speed = s->speed;
     st.person = s->person;
+    st.opts = (uint8_t)((s->avatar & 1u) | (s->cables & 3u) << 2);
     const touch_cal_t *c = &s->cal;
     const float k[6] = {c->a, c->b, c->c, c->d, c->e, c->f};
     for (int i = 0; i < 6; i++) {

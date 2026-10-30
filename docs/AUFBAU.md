@@ -78,6 +78,17 @@ P-Welle, was für die Rhythmusbeurteilung gut ist:
 | LA | links am unteren Rippenbogen |
 | RL | rechts am unteren Rippenbogen |
 
+**Anleitung auf dem Gerät:** Menü → Elektroden zeigt eine Figur mit den drei Elektroden an den Stellen der
+Tabelle (Ableitung II) und der Farbe jedes Kabels. Ohne Kontakt länger als 4 s (und ohne laufende Messung)
+öffnet sie sich von selbst; die Elektrode ohne Kontakt ist rot umrandet und mit „!“ markiert (LO+ meldet LA,
+LO− meldet RA; für RL gibt es keine Kontaktmeldung). Haben alle Kontakt, schließt sie sich nach 1,5 s. Die
+Figur folgt dem aktiven Profil (Geschlecht, Größe, BMI) oder ist eine Standardfigur (Einstellungen → Avatar).
+
+**Kabelfarben:** Klon-Kabel sind nicht einheitlich gefärbt. „Farben“ in der Anleitung schaltet zwischen drei
+Schemata für RA / LA / RL um: Rot / Gelb / Grün (übliches AD8232-Kabel, voreingestellt), Weiß / Schwarz / Grün
+(AHA) und Rot / Gelb / Schwarz (IEC). Welches zu deinem Kabel passt, zeigt nur das Durchmessen (siehe Prüfliste):
+Die Anleitung kennt die Farben deines Kabels nicht.
+
 Ruhig sitzen oder liegen, die Kabel nicht unter Zug. Zeigt die Software eine **negative** R-Zacke, sind RA und LA
 vertauscht. Die Erkennung funktioniert trotzdem, für vergleichbare Bilder sollte man sie aber tauschen.
 
@@ -159,8 +170,8 @@ gedrückt halten.
 | Wo | Bedienung |
 |---|---|
 | Live-Ansicht | Tippen öffnet das Menü |
-| Menü | **Messen & auswerten**, Letztes Ergebnis, Einstellungen, **Person** (Profil wählen) |
-| Einstellungen | Zeile antippen schaltet weiter: Anzeige, Ausrichtung, Verstärkung, Vorschub; dazu Touch einrichten und Info |
+| Menü | **Messen & auswerten**, Letztes Ergebnis, **Elektroden** (Anleitung), Einstellungen, **Person** (Profil wählen) |
+| Einstellungen | Zeile antippen schaltet weiter: Anzeige, Ausrichtung, Verstärkung, Vorschub, Avatar; dazu Touch einrichten und Info |
 | während der Messung | **Stopp** oben rechts beendet und wertet aus (ab 30 s) |
 | Ergebnis | ‹ › oder wischen: Seiten · Kurve · Neu messen |
 | Check | Zeile antippen: Erklärung; dort wischen: nächster Punkt, tippen: zurück |
@@ -171,6 +182,7 @@ gedrückt halten.
 | Ausrichtung | Quer, Hochkant | Hochkant ist um 90° im Uhrzeigersinn gedreht: der linke Rand liegt oben |
 | Verstärkung | Auto, 5, 10, 20 mm/mV | Auto wählt aus 2,5 bis 40 mm/mV so, dass die R-Zacke gut die Hälfte der Höhe füllt |
 | Vorschub | 12,5, 25, 50 mm/s | 25 mm/s wie beim Standard-EKG |
+| Avatar | Profil, Standard | Profil: die Figur der Elektroden-Anleitung folgt Geschlecht, Größe und BMI des Profils. Standard: normalgewichtig (weiblich 165 cm, männlich 178 cm). Im Gastmodus ist sie in beiden Fällen neutral |
 
 Die Millimeter sind echt: Das Panel hat 0,18 mm Pixelabstand, das gepunktete Raster liegt alle 5 mm. Die
 Eichzacke links ist 1 mV hoch (bei großer Verstärkung 0,5 mV). Die Verstärkung wechselt erst, wenn die Kurve

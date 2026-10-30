@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "avatar.h"
 #include "check.h"
 #include "gesture.h"
 #include "keyboard.h"
@@ -124,7 +125,8 @@ static uint32_t mv_to_raw(double mv, int oversampling) {
     return (uint32_t)lround(v / (3.3 / 4096.0 / oversampling));
 }
 
-static void run_blocks(double t0, double t1, double hr, int rate, uint32_t *seq, int skip_every) {
+static void run_blocks_flags(double t0, double t1, double hr, int rate, uint32_t *seq,
+                             int skip_every, uint8_t flags) {
     const int n = rate / 20, os = 32000 / rate;
     uint32_t raw[64];
     for (double t = t0; t < t1 - 1e-9; t += 0.05) {
@@ -136,10 +138,14 @@ static void run_blocks(double t0, double t1, double hr, int rate, uint32_t *seq,
             continue;  // Block geht verloren
         }
         uint32_t now = (uint32_t)lround(t * 1000.0);
-        app_feed(&app, raw, n, 0, (uint32_t)os, s);
+        app_feed(&app, raw, n, flags, (uint32_t)os, s);
         rect_t d[16];
         app_frame(&app, now, d, 16);
     }
+}
+
+static void run_blocks(double t0, double t1, double hr, int rate, uint32_t *seq, int skip_every) {
+    run_blocks_flags(t0, t1, hr, rate, seq, skip_every, 0);
 }
 
 static canvas_t canvas;
@@ -294,19 +300,24 @@ static void test_settings(void) {
     CHECK(app.screen == APP_SETTINGS);
     const float px_mm = 320.0f / 57.6f;
     CHECK(fabsf(mon.px_per_sample - 25.0f * px_mm / 500.0f) < 1e-4f);  // 25 mm/s
-    tap(160, 28 + 3 * 35 + 10, 20);  // Vorschub -> 50 mm/s
+    tap(160, 28 + 3 * 30 + 10, 20);  // Vorschub -> 50 mm/s
     CHECK(ui.speed == MON_SPEED_50 && app.req_save);
     CHECK(fabsf(mon.px_per_sample - 50.0f * px_mm / 500.0f) < 1e-4f);
-    tap(160, 28 + 2 * 35 + 10, 30);  // Verstärkung Auto -> 5 mm/mV
+    tap(160, 28 + 2 * 30 + 10, 30);  // Verstärkung Auto -> 5 mm/mV
     CHECK(ui.gain == MON_GAIN_5 && fabsf(mon.px_per_mv - 5.0f * px_mm) < 1e-3f);
-    tap(160, 28 + 2 * 35 + 10, 40);  // -> 10 mm/mV
+    tap(160, 28 + 2 * 30 + 10, 40);  // -> 10 mm/mV
     CHECK(fabsf(mon.px_per_mv - 10.0f * px_mm) < 1e-3f);
     app.req_rotate = false;
-    tap(160, 28 + 1 * 35 + 10, 50);  // Ausrichtung -> hochkant
+    tap(160, 28 + 1 * 30 + 10, 50);  // Ausrichtung -> hochkant
     CHECK(ui.rotation == 1 && app.req_rotate && canvas.w == 240 && canvas.h == 320);
     CHECK(app.screen == APP_SETTINGS);
-    tap(120, 28 + 1 * 44 + 10, 60);  // zurück auf quer (hochkant sind die Zeilen 44 px hoch)
+    tap(120, 28 + 1 * 40 + 10, 60);  // zurück auf quer (hochkant sind die Zeilen 40 px hoch)
     CHECK(ui.rotation == 0 && canvas.w == 320);
+    CHECK(ui.avatar == 0);
+    tap(160, 28 + 4 * 30 + 10, 65);  // Avatar -> Standardfigur
+    CHECK(ui.avatar == 1 && app.req_save);
+    tap(160, 28 + 4 * 30 + 10, 66);
+    CHECK(ui.avatar == 0);
     tap(310, 10, 70);  // ×
     CHECK(app.screen == APP_LIVE);
 }
@@ -342,6 +353,8 @@ static void test_settings_codec(void) {
     a.gain = 2;
     a.speed = 2;
     a.person = 1;
+    a.avatar = 1;
+    a.cables = 2;
     snprintf(a.profiles[1].name, sizeof a.profiles[1].name, "Jörg");
     a.profiles[1].age = 54;
     a.profiles[1].sex = SEX_MALE;
@@ -353,6 +366,7 @@ static void test_settings_codec(void) {
     settings_decode(page, &b);
     CHECK(b.rotation == 1 && b.look == 0 && b.has_cal && b.vsys == VSYS_OK);
     CHECK(b.gain == 2 && b.speed == 2 && b.person == 1);
+    CHECK(b.avatar == 1 && b.cables == 2);
     CHECK(b.cal.a == 1.5f && b.cal.f == 6.5f);
     CHECK(strcmp(b.profiles[1].name, "Jörg") == 0 && b.profiles[1].age == 54);
     CHECK(b.profiles[1].sex == SEX_MALE && b.profiles[1].height_cm == 182);
@@ -388,6 +402,7 @@ static void test_settings_codec(void) {
     CHECK(b.rotation == 1 && b.look == 0 && b.has_cal && b.vsys == VSYS_NONE);
     CHECK(b.gain == 3 && b.speed == 0 && b.cal.a == 9.0f);
     CHECK(b.person == PERSON_GUEST && !profile_used(&b.profiles[0]) && !profile_used(&b.profiles[1]));
+    CHECK(b.avatar == 0 && b.cables == 0);
 
     // unsinnige Werte im Profil werden verworfen
     settings_defaults(&a);
@@ -842,6 +857,139 @@ static void test_profiles_portrait(void) {
     CHECK(app.screen == APP_CHECK_DETAIL && app.detail == CHK_PULSE);
 }
 
+// ------------------------------------------------------------------ Avatar und Elektroden-Anleitung
+static int painted(const uint16_t *px, int n) {
+    int k = 0;
+    for (int i = 0; i < n; i++) {
+        k += px[i] != 0;
+    }
+    return k;
+}
+
+static void test_avatar(void) {
+    profile_t p;
+    memset(&p, 0, sizeof p);
+    snprintf(p.name, sizeof p.name, "T");
+    p.sex = SEX_FEMALE;
+    p.height_cm = 160;
+    p.weight_kg = 90;
+    avatar_t a = avatar_for(&p, AVATAR_PROFILE);
+    CHECK(a.sex == SEX_FEMALE && a.height_cm == 160 && a.bmi10 == 352);
+    a = avatar_for(&p, AVATAR_STANDARD);  // Standard: normalgewichtig, Größe nach Geschlecht
+    CHECK(a.sex == SEX_FEMALE && a.height_cm == 165 && a.bmi10 == 220);
+    p.sex = SEX_MALE;
+    a = avatar_for(&p, AVATAR_STANDARD);
+    CHECK(a.sex == SEX_MALE && a.height_cm == 178 && a.bmi10 == 220);
+    a = avatar_for(NULL, AVATAR_PROFILE);  // Gast: neutral, in beiden Modi
+    CHECK(a.sex == SEX_UNKNOWN && a.bmi10 == 220);
+    p.sex = SEX_UNKNOWN;
+    p.height_cm = 0;
+    p.weight_kg = 0;
+    a = avatar_for(&p, AVATAR_PROFILE);  // ohne Größe und Gewicht: Normalfigur
+    CHECK(a.sex == SEX_UNKNOWN && a.bmi10 == 220 && a.height_cm == 172);
+
+    // Zeichnen: schwerer = mehr Fläche, kleiner = tiefer, Elektroden liegen am Körper
+    enum { W = 124, H = 168 };
+    static uint16_t px[W * H];
+    canvas_t c = {px, W, H};
+    avatar_sites_t sites;
+    const avatar_t slim = {SEX_FEMALE, 170, 175}, heavy = {SEX_FEMALE, 170, 340};
+    const avatar_t kid = {SEX_UNKNOWN, 110, 170};
+    memset(px, 0, sizeof px);
+    avatar_draw(&c, 0, 0, W, H, &slim, &sites);
+    const int n_slim = painted(px, W * H);
+    memset(px, 0, sizeof px);
+    avatar_draw(&c, 0, 0, W, H, &heavy, NULL);
+    const int n_heavy = painted(px, W * H);
+    CHECK(n_slim > 1000 && n_heavy > n_slim * 12 / 10);
+    CHECK(sites.ra.x < W / 2.0f && sites.rl.x < W / 2.0f && sites.la.x > W / 2.0f);
+    CHECK(sites.ra.y < sites.la.y && sites.la.y == sites.rl.y && sites.r >= 3.6f);
+    memset(px, 0, sizeof px);
+    avatar_draw(&c, 0, 0, W, H, &kid, NULL);
+    CHECK(painted(px, W * H) < n_slim);
+    int first = -1;
+    for (int i = 0; i < W * H && first < 0; i++) {
+        first = px[i] ? i / W : -1;
+    }
+    CHECK(first > H / 4);  // 110 cm: die Figur beginnt deutlich tiefer als bei 190 cm
+    // Figur bleibt in der Box (auch bei sehr breiter Figur)
+    const avatar_t wide = {SEX_MALE, 190, 450};
+    memset(px, 0, sizeof px);
+    avatar_draw(&c, 0, 0, W, H, &wide, NULL);
+    int edge = 0;
+    for (int y = 0; y < H; y++) {
+        edge += px[y * W] != 0 || px[y * W + W - 1] != 0;
+    }
+    CHECK(edge == 0);
+}
+
+static void test_leads(void) {
+    setup_app();
+    uint32_t seq = 0;
+    run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
+    // Menü -> Elektroden (rechts neben dem letzten Ergebnis), Farben weiterschalten, Fertig
+    tap(160, 120, 3000);
+    tap(230, 118, 3100);
+    CHECK(app.screen == APP_LEADS && !app.leads_auto);
+    tap(80, 222, 3200);
+    CHECK(ui.cables == 1 && app.req_save);
+    tap(80, 222, 3210);
+    tap(80, 222, 3220);
+    CHECK(ui.cables == 0 && app.screen == APP_LEADS);
+    tap(240, 222, 3300);
+    CHECK(app.screen == APP_LIVE);
+
+    // Ohne Kontakt erscheint die Anleitung nach 4 s von selbst, nicht während einer Messung
+    setup_app();
+    seq = 0;
+    run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
+    run_blocks_flags(3.0, 6.0, 66.0, 500, &seq, 0, EKG_FLAG_LO_PLUS);
+    CHECK(app.screen == APP_LIVE);
+    run_blocks_flags(6.0, 8.0, 66.0, 500, &seq, 0, EKG_FLAG_LO_PLUS);
+    CHECK(app.screen == APP_LEADS && app.leads_auto && app.leads_shown == EKG_FLAG_LO_PLUS);
+    run_blocks_flags(8.0, 8.5, 66.0, 500, &seq, 0, EKG_FLAG_LO_PLUS | EKG_FLAG_LO_MINUS);
+    CHECK(app.leads_shown == (EKG_FLAG_LO_PLUS | EKG_FLAG_LO_MINUS));
+    run_blocks(8.5, 9.5, 66.0, 500, &seq, 0);  // Kontakt, aber erst 1 s
+    CHECK(app.screen == APP_LEADS);
+    run_blocks(9.5, 11.5, 66.0, 500, &seq, 0);
+    CHECK(app.screen == APP_LIVE && app.toast_shown);
+    // wieder ab: nach dem Hinweis erneut, Fertig schließt und sie bleibt zu, bis Kontakt da war
+    run_blocks_flags(11.5, 20.0, 66.0, 500, &seq, 0, EKG_FLAG_LO_MINUS);
+    CHECK(app.screen == APP_LEADS);
+    tap(240, 222, 20000);
+    CHECK(app.screen == APP_LIVE && app.lead_dismissed);
+    run_blocks_flags(20.0, 30.0, 66.0, 500, &seq, 0, EKG_FLAG_LO_MINUS);
+    CHECK(app.screen == APP_LIVE);
+    run_blocks(30.0, 33.0, 66.0, 500, &seq, 0);
+    CHECK(!app.lead_dismissed);
+    run_blocks_flags(33.0, 40.0, 66.0, 500, &seq, 0, EKG_FLAG_LO_MINUS);
+    CHECK(app.screen == APP_LEADS);
+
+    // Während der Messung bleibt die Kurve mit dem kleinen Hinweis stehen
+    setup_app();
+    seq = 0;
+    run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
+    tap(160, 120, 3000);
+    tap(160, 69, 3100);
+    CHECK(app.measuring);
+    run_blocks_flags(3.0, 12.0, 66.0, 500, &seq, 0, EKG_FLAG_LO_PLUS);
+    CHECK(app.screen == APP_LIVE && app.measuring);
+
+    // Hochkant: Menüeintrag und Schaltflächen an den neuen Stellen
+    start_rotation = 1;
+    setup_app();
+    start_rotation = 0;
+    seq = 0;
+    run_blocks(0.0, 3.0, 66.0, 500, &seq, 0);
+    tap(120, 160, 3000);
+    tap(171, 156, 3100);
+    CHECK(app.screen == APP_LEADS);
+    tap(60, 298, 3200);  // Farben
+    CHECK(ui.cables == 1);
+    tap(180, 298, 3300);  // Fertig
+    CHECK(app.screen == APP_LIVE);
+}
+
 int main(void) {
     test_touchcal();
     test_gestures();
@@ -859,6 +1007,8 @@ int main(void) {
     test_check();
     test_profiles_flow();
     test_profiles_portrait();
+    test_avatar();
+    test_leads();
     if (failures) {
         fprintf(stderr, "%d Fehler\n", failures);
         return 1;

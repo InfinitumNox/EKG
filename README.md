@@ -104,6 +104,9 @@ cmake --build build/firmware`. Das Pico SDK 2.2.0 wird dabei automatisch geholt.
   Rhythmus-Hinweise, typischer Schlag mit PR/QRS/QT und Signalqualität direkt auf dem Display. Die Verfahren
   sind aus der Laptop-Software nach C übertragen und gegen die Python-Fassung getestet. Bedienung in
   [docs/AUFBAU.md](docs/AUFBAU.md).
+- **Elektroden-Anleitung:** Eine Figur zeigt, welche Elektrode wohin gehört (Farben umschaltbar), und
+  öffnet sich von selbst, wenn der Kontakt fehlt; die betroffene Elektrode ist markiert. Die Figur passt sich
+  Geschlecht, Größe und Gewicht des Profils an oder ist eine Standardfigur.
 - **Check-Liste und Profile:** Eine Ergebnisseite ordnet neun Punkte (Signal, Puls, Rhythmus, Extraschläge,
   P-Welle, PR, QRS, QT, HRV) mit Ampel ein und erklärt sie in Alltagssprache. Zwei Profile (Name, Alter,
   Geschlecht, Größe, Gewicht) mit Bildschirmtastatur; Alter und Geschlecht bestimmen, welche Grenzen gelten.

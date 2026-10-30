@@ -22,6 +22,7 @@ add_executable(test_ui
     test_ui.c
     ../src/ui/app.c
     ../src/ui/assets.c
+    ../src/ui/avatar.c
     ../src/ui/check.c
     ../src/ui/gesture.c
     ../src/ui/gfx.c

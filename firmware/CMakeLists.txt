@@ -37,6 +37,7 @@ add_executable(ekg
     src/analysis/ana_wave.c
     src/ui/app.c
     src/ui/assets.c
+    src/ui/avatar.c
     src/ui/check.c
     src/ui/gesture.c
     src/ui/gfx.c
@@ -66,5 +67,5 @@ target_link_libraries(ekg PRIVATE
 pico_enable_stdio_usb(ekg 0)
 pico_enable_stdio_uart(ekg 0)
 pico_set_program_name(ekg "Pico EKG")
-pico_set_program_version(ekg "0.6.0")
+pico_set_program_version(ekg "0.7.0")
 pico_add_extra_outputs(ekg)

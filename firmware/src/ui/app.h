@@ -30,6 +30,7 @@ typedef enum {
     APP_PROFILE_EDIT,  // Angaben eines Profils
     APP_KEYBOARD,      // Eingabe für ein Feld des Profils
     APP_CHECK_DETAIL,  // Erklärung zu einem Punkt der Check-Liste
+    APP_LEADS,         // Anleitung: welche Elektrode wohin
 } app_screen_t;
 
 // Übersicht, Check, Verlauf, HRV, Schlagform, Hinweise
@@ -70,6 +71,15 @@ typedef struct {
     check_item_t checks[CHK_MAX];
     int n_checks;
     int detail;  // gewählter Punkt der Check-Liste
+
+    // Elektroden-Anleitung: öffnet sich von selbst, wenn die Elektroden lange keinen Kontakt haben
+    bool leads_auto;        // von selbst geöffnet (schließt sich bei Kontakt wieder)
+    bool lead_active;       // Kontaktverlust läuft
+    bool lead_dismissed;    // wurde geschlossen, solange der Kontakt fehlt
+    bool lead_ok_active;
+    uint8_t leads_shown;    // gezeigter Zustand (EKG_FLAG_LO_*)
+    uint32_t lead_off_since;
+    uint32_t lead_ok_since;
 
     // Profile
     int edit_idx;

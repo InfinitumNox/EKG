@@ -86,20 +86,32 @@ def main() -> None:
         g = SyntheticEcg(FS, scenario=Scenario.AF, seed=8, amplitude=0.8, mains_mv=0.03)
         mv = g.generate(FS * 140)
         blocks_file(tmp / "af.bin", mv, np.zeros(len(mv), dtype=np.uint8))
+        # Elektroden ab: erst LA, dann beide; die Anleitung öffnet sich nach 4 s von selbst
+        g = SyntheticEcg(FS, scenario=Scenario.REST, seed=5, amplitude=0.8, mains_mv=0.03)
+        mv = g.generate(FS * 20)
+        flags = np.zeros(len(mv), dtype=np.uint8)
+        flags[FS * 1 : FS * 10] = 1
+        flags[FS * 10 : FS * 15] = 3
+        blocks_file(tmp / "lo.bin", mv, flags)
+        lo_script = ["6000 shot ab_la", "12000 shot ab_beide", "17000 shot ab_wieder"]
         # Tippstellen je Ausrichtung (Menü, Person, Profil anlegen, Messen, Seiten, Einstellungen)
         spots = {
             "quer": {"menu": "160 120", "person": "160 206", "prof0": "100 58",
                      "age": "100 73", "sex": "100 103", "height": "100 133",
                      "weight": "100 163", "done": "240 218", "close": "310 12",
                      "measure": "160 69", "next": "292 222", "live": "100 222",
-                     "check_row": "160 57", "rhythm_row": "160 75", "back": "160 120",
-                     "settings": "160 166", "row_touch": "160 178", "row_info": "160 213"},
+                     "check_row": "160 53", "rhythm_row": "160 75", "back": "160 120",
+                     "settings": "160 166", "row_avatar": "160 163", "row_touch": "160 193",
+                     "row_info": "160 223", "leads": "230 118", "leads_done": "240 222",
+                     "leads_colors": "80 222"},
             "hochkant": {"menu": "120 160", "person": "120 252", "prof0": "100 65",
                          "age": "100 88", "sex": "100 128", "height": "100 168",
                          "weight": "100 208", "done": "180 290", "close": "220 12",
                          "measure": "120 100", "next": "220 300", "live": "70 300",
                          "check_row": "120 84", "rhythm_row": "120 107", "back": "120 160",
-                         "settings": "120 200", "row_touch": "120 214", "row_info": "120 258"},
+                         "settings": "120 200", "row_avatar": "120 208", "row_touch": "120 248",
+                         "row_info": "120 288", "leads": "171 156", "leads_done": "180 298",
+                         "leads_colors": "60 298"},
         }  # fmt: skip
         for orient, sp in spots.items():
             script = [
@@ -111,7 +123,9 @@ def main() -> None:
                 f"5600 tap {sp['height']}", "5700 type 168", "5800 key OK",
                 f"5900 tap {sp['weight']}", "6000 type 62", "6100 key OK", "6300 shot profil",
                 f"6400 tap {sp['done']}", "6500 shot personen2", f"6600 tap {sp['close']}",
-                f"6800 tap {sp['measure']}", "45000 shot messung",
+                f"6700 tap {sp['leads']}", "6750 shot elektroden", f"6760 tap {sp['leads_colors']}",
+                "6770 shot elektroden_farben", f"6780 tap {sp['leads_done']}",
+                f"6790 tap {sp['menu']}", f"6800 tap {sp['measure']}", "45000 shot messung",
                 "127500 shot seite1", f"127600 tap {sp['next']}", "127700 shot seite2",
                 f"127800 tap {sp['check_row']}", "127900 shot detail",
                 f"128000 tap {sp['back']}", f"128100 tap {sp['next']}", "128200 shot seite3",
@@ -124,13 +138,42 @@ def main() -> None:
                 f"130800 tap {sp['row_info']}", "130900 shot info",
             ]  # fmt: skip
             af_script = [
+                f"1000 tap {sp['menu']}", f"1100 tap {sp['leads']}", "1200 shot elektroden_gast",
+                f"1300 tap {sp['leads_done']}",
                 f"3000 tap {sp['menu']}", f"3500 tap {sp['measure']}", "123900 shot af_uebersicht",
                 f"124000 tap {sp['next']}", "124100 shot af_check",
                 f"124200 tap {sp['rhythm_row']}", "124300 shot af_detail",
             ]  # fmt: skip
+
+            def profile_script(sp, name, age, sex_taps, height, weight, tag):
+                return [
+                    f"1000 tap {sp['menu']}", f"1100 tap {sp['person']}", f"1200 tap {sp['prof0']}",
+                    f"1300 type {name}", "1400 key OK", f"1500 tap {sp['age']}",
+                    f"1600 type {age}", "1700 key OK",
+                    *[f"{1800 + 20 * i} tap {sp['sex']}" for i in range(sex_taps)],
+                    f"2000 tap {sp['height']}", f"2100 type {height}", "2200 key OK",
+                    f"2300 tap {sp['weight']}", f"2400 type {weight}", "2500 key OK",
+                    f"2600 tap {sp['done']}", f"2700 tap {sp['close']}",
+                    f"2800 tap {sp['leads']}", f"2900 shot {tag}_profil",
+                    f"3000 tap {sp['leads_done']}", f"3100 tap {sp['menu']}",
+                    f"3200 tap {sp['settings']}", f"3300 tap {sp['row_avatar']}",
+                    f"3400 tap {sp['close']}", f"3500 tap {sp['menu']}",
+                    f"3600 tap {sp['leads']}", f"3700 shot {tag}_standard",
+                ]  # fmt: skip
+
+            men_script = profile_script(sp, "Max", 55, 1, 190, 125, "mann_schwer")
+            kid_script = profile_script(sp, "Mia", 9, 2, 135, 28, "kind")
+            lean_script = profile_script(sp, "Lea", 30, 2, 178, 52, "frau_schlank")
             extra = [] if orient == "quer" else ["hochkant"]
             for theme, opt in (("nacht", []), ("tag", ["tag"])):
-                for src, lines in (("a.bin", script), ("af.bin", af_script)):
+                for src, lines in (
+                    ("a.bin", script),
+                    ("af.bin", af_script),
+                    ("af.bin", men_script),
+                    ("af.bin", kid_script),
+                    ("af.bin", lean_script),
+                    ("lo.bin", lo_script),
+                ):
                     (tmp / "script.txt").write_text("\n".join(lines) + "\n")
                     cmd = [exe, *opt, *extra, "app", str(tmp / src), str(tmp / "app"),
                            str(tmp / "script.txt")]  # fmt: skip

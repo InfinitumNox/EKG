@@ -22,10 +22,14 @@ typedef struct {
     uint8_t gain;      // Verstärkung der Kurve (mon_gain_t, 0 = Auto)
     uint8_t speed;     // Vorschub (mon_speed_t, 1 = 25 mm/s)
     uint8_t person;    // aktives Profil (0, 1) oder PERSON_GUEST
+    uint8_t avatar;    // 0 = nach Profil (Größe, Gewicht), 1 = Standardfigur
+    uint8_t cables;    // Farbschema der Elektrodenkabel (0 … CABLE_PRESETS - 1)
     profile_t profiles[PROFILE_COUNT];
 } ui_settings_t;
 
 enum { VSYS_UNKNOWN = 0, VSYS_OK = 1, VSYS_NONE = 2 };
+
+#define CABLE_PRESETS 3
 
 // Aktives Profil, NULL bei „Gast“ oder wenn das Profil nicht angelegt ist
 static inline const profile_t *settings_person(const ui_settings_t *s) {

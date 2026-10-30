@@ -347,7 +347,7 @@ PLAN.md     dieses Dokument
 | M3 | fertig (synthetisch getestet) | MIT-BIH-Benchmark muss noch lokal laufen: `tools/mitbih_benchmark.py` |
 | M4 | Werkzeug fertig, Messung offen | Kalibrier-Assistent gegen den simulierten Loopback getestet (Verstärkung ±1 %) |
 | M5 | fertig | EDF+/WFDB/CSV/PDF, Messschieber, HRV, Median-Schlag |
-| M6 | weitgehend | Display, Touch und Auswertung laufen auf dem Gerät (C = Python im Test); 0.5.0: hochkant, Maßstab in mm, Einstellungen; 0.6.0: Check-Liste, zwei Profile, Bildschirmtastatur; SD-Karte offen |
+| M6 | weitgehend | Display, Touch und Auswertung laufen auf dem Gerät (C = Python im Test); 0.5.0: hochkant, Maßstab in mm, Einstellungen; 0.6.0: Check-Liste, zwei Profile, Bildschirmtastatur; 0.7.0: Elektroden-Anleitung mit Figur; SD-Karte offen |
 
 ## 14. Erkenntnisse aus der ersten realen Messung (28.10.2026, 30 min)
 

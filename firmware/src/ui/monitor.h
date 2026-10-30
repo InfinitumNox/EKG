@@ -89,6 +89,7 @@ typedef struct {
     uint32_t beat_at;
     bool beat_pending;
     bool test;
+    uint8_t lead_flags;  // EKG_FLAG_LO_PLUS (LA) und EKG_FLAG_LO_MINUS (RA) des letzten Blocks
     bool usb, streaming;
     int battery_pct;  // -1: keine Anzeige (USB oder keine verlässliche Messung)
     bool measuring;   // Messung für die Auswertung läuft

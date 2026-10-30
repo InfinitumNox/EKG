@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "assets.h"
+#include "avatar.h"
 #include "protocol.h"
 #include "theme.h"
 #include "touchcal.h"
@@ -151,6 +152,7 @@ static void apply_orientation(app_t *a) {
 }
 
 static void redraw(app_t *a);
+static void status_icon(canvas_t *c, float cx, float cy, chk_status_t st);
 
 static void go_live(app_t *a) {
     a->screen = APP_LIVE;
@@ -179,7 +181,8 @@ static void draw_toast(app_t *a) {
 }
 
 // ------------------------------------------------------------------ Menü
-// 0 = Messen & auswerten, 1 = Letztes Ergebnis, 2 = Einstellungen, 3 = Person
+// 0 = Messen & auswerten, 1 = Letztes Ergebnis, 2 = Einstellungen, 3 = Person,
+// 4 = Elektroden (rechts neben dem letzten Ergebnis)
 static box_t menu_panel(lay_t l) {
     return l.portrait ? (box_t){10, 40, l.w - 20, 244} : (box_t){12, 8, l.w - 24, 224};
 }
@@ -190,7 +193,16 @@ static box_t menu_item(lay_t l, int i) {
     if (i == 0) {
         return (box_t){x, p.y + 38, w, ph};
     }
-    return (box_t){x, p.y + 38 + ph + 8 + (i - 1) * (h + 8), w, h};
+    const int half = (w - 8) / 2;
+    const int row = i == 4 ? 1 : i;
+    const int y = p.y + 38 + ph + 8 + (row - 1) * (h + 8);
+    if (i == 1) {
+        return (box_t){x, y, half, h};
+    }
+    if (i == 4) {
+        return (box_t){x + half + 8, y, w - half - 8, h};
+    }
+    return (box_t){x, y, w, h};
 }
 
 static box_t menu_close(lay_t l) {
@@ -230,7 +242,9 @@ static void draw_menu(app_t *a, bool fresh_bg) {
         gfx_text(c, &FONT_SMALL, m.x + m.w - 12 - gfx_text_width(&FONT_SMALL, dur),
                  m.y + m.h / 2 + 5, dur, 0xFFFFFFu, 200);
     }
-    button(c, menu_item(l, 1), "Letztes Ergebnis", false, a->has_result || a->result_status);
+    button(c, menu_item(l, 1), l.portrait ? "Ergebnis" : "Letztes Ergebnis", false,
+           a->has_result || a->result_status);
+    button(c, menu_item(l, 4), "Elektroden", false, true);
     button(c, menu_item(l, 2), "Einstellungen", false, true);
     const profile_t *who = settings_person(a->ui);
     char label[PROFILE_NAME_BYTES + 12];
@@ -239,10 +253,10 @@ static void draw_menu(app_t *a, bool fresh_bg) {
 }
 
 // ------------------------------------------------------------------ Einstellungen
-enum { SET_LOOK, SET_ORIENT, SET_GAIN, SET_SPEED, SET_CAL, SET_INFO, SET_ROWS };
+enum { SET_LOOK, SET_ORIENT, SET_GAIN, SET_SPEED, SET_AVATAR, SET_CAL, SET_INFO, SET_ROWS };
 
 static box_t settings_row(lay_t l, int i) {
-    const int rh = l.portrait ? 44 : 35;
+    const int rh = l.portrait ? 40 : 30;
     return (box_t){0, HEADER_H + 2 + i * rh, l.w, rh};
 }
 
@@ -253,8 +267,9 @@ static void draw_settings(app_t *a) {
     header(a, "Einstellungen", NULL);
     for (int i = 0; i < SET_ROWS; i++) {
         box_t r = settings_row(l, i);
-        static const char *LABELS[SET_ROWS] = {"Anzeige",     "Ausrichtung",      "Verstärkung",
-                                               "Vorschub", "Touch einrichten", "Info"};
+        static const char *LABELS[SET_ROWS] = {"Anzeige",  "Ausrichtung",      "Verstärkung",
+                                               "Vorschub", "Avatar",           "Touch einrichten",
+                                               "Info"};
         const char *value = "›";
         switch (i) {
             case SET_LOOK:
@@ -268,6 +283,9 @@ static void draw_settings(app_t *a) {
                 break;
             case SET_SPEED:
                 value = monitor_speed_name(a->ui->speed);
+                break;
+            case SET_AVATAR:
+                value = a->ui->avatar ? "Standard" : "Profil";
                 break;
             default:
                 break;
@@ -491,6 +509,115 @@ static void select_person(app_t *a, int person) {
     a->ui->person = (uint8_t)person;
     a->req_save = true;
     back_to_menu(a);
+}
+
+// ------------------------------------------------------------------ Elektroden-Anleitung
+#define LEADS_AUTO_MS 4000u  // so lange ohne Kontakt, bis die Anleitung von selbst erscheint
+#define LEADS_OK_MS 1500u    // so lange mit Kontakt, bis sie sich wieder schließt
+
+// Farben der Kabel (RA, LA, RL). Klon-Kabel sind nicht einheitlich gefärbt: das Schema lässt sich
+// in der Anleitung umschalten.
+typedef struct {
+    const char *name[3];
+    uint32_t rgb[3];
+} cable_t;
+
+static const cable_t CABLES[CABLE_PRESETS] = {
+    {{"Rot", "Gelb", "Grün"}, {0xE53935u, 0xF2C200u, 0x2EAD4Bu}},
+    {{"Weiß", "Schwarz", "Grün"}, {0xF5F5F5u, 0x202020u, 0x2EAD4Bu}},
+    {{"Rot", "Gelb", "Schwarz"}, {0xE53935u, 0xF2C200u, 0x202020u}},
+};
+
+static const char *const SITE_NAME[3] = {"RA", "LA", "RL"};
+static const char *const SITE_WHERE[3] = {"rechts unter dem Schlüsselbein",
+                                          "links am unteren Rippenbogen",
+                                          "rechts am unteren Rippenbogen"};
+
+static box_t leads_bar(lay_t l) {
+    const int h = l.portrait ? 44 : 36;
+    return (box_t){0, l.h - h, l.w, h};
+}
+
+// 0 = Farben, 1 = Fertig
+static box_t leads_button(lay_t l, int i) {
+    const box_t bar = leads_bar(l);
+    const int w = (l.w - 30) / 2;
+    return (box_t){10 + i * (w + 10), bar.y + 5, w, bar.h - 10};
+}
+
+// Markierung auf der Figur: heller Rand für jeden Untergrund, roter Ring bei fehlendem Kontakt
+static void site_marker(canvas_t *c, float x, float y, float r, uint32_t rgb, bool off) {
+    if (off) {
+        gfx_disc(c, x, y, r + 5.5f, C_ACCENT, OPAQUE);
+        gfx_disc(c, x, y, r + 3.0f, C_BG, OPAQUE);
+    }
+    gfx_disc(c, x, y, r + 1.6f, C_TEXT, OPAQUE);
+    gfx_disc(c, x, y, r, rgb, OPAQUE);
+}
+
+static void draw_leads(app_t *a) {
+    canvas_t *c = a->c;
+    lay_t l = lay(a);
+    const uint8_t lo = a->mon->lead_flags;
+    const bool off[3] = {(lo & EKG_FLAG_LO_MINUS) != 0, (lo & EKG_FLAG_LO_PLUS) != 0, false};
+    gfx_fill(c, 0, 0, l.w, l.h, C_BG);
+    header(a, "Elektroden", NULL);
+    const char *state = off[0] && off[1] ? "RA und LA ab" : off[0] ? "RA ab" : off[1] ? "LA ab"
+                        : a->mon->status == MON_LEAD_OFF ? "ohne Kontakt" : "Kontakt ok";
+    gfx_text(c, &FONT_SMALL, 20 + gfx_text_width(&FONT_LABEL, "Elektroden") + 8, 18, state,
+             lo || a->mon->status == MON_LEAD_OFF ? C_ACCENT : C_OK, OPAQUE);
+
+    const box_t bar = leads_bar(l);
+    const cable_t *cab = &CABLES[a->ui->cables < CABLE_PRESETS ? a->ui->cables : 0];
+    const avatar_t av = avatar_for(settings_person(a->ui), a->ui->avatar);
+    const int bx = 4, by = HEADER_H + 6, bw = l.portrait ? 108 : 124, bh = bar.y - by - 6;
+    avatar_sites_t sites;
+    avatar_draw(c, bx, by, bw, bh, &av, &sites);
+    const avatar_pt_t pts[3] = {sites.ra, sites.la, sites.rl};
+    for (int i = 0; i < 3; i++) {
+        site_marker(c, pts[i].x, pts[i].y, sites.r, cab->rgb[i], off[i]);
+    }
+
+    // Legende: Farbe, Name und Stelle
+    const int lx = bx + bw + 8, tx = lx + 22, tw = l.w - tx - 8;
+    const int step = l.portrait ? 78 : 54, y0 = HEADER_H + 10;
+    for (int i = 0; i < 3; i++) {
+        const int y = y0 + i * step;
+        site_marker(c, (float)lx + 8.0f, (float)y + 9.0f, 6.0f, cab->rgb[i], false);
+        char t[32];
+        snprintf(t, sizeof t, "%s · %s", cab->name[i], SITE_NAME[i]);
+        gfx_text(c, &FONT_LABEL, tx, y + 15, t, off[i] ? C_ACCENT : C_TEXT, OPAQUE);
+        gfx_text_wrap(c, &FONT_SMALL, tx, y + 32, tw, 16, SITE_WHERE[i], C_TEXT_DIM, 3);
+        if (off[i]) {
+            status_icon(c, (float)l.w - 16.0f, (float)y + 9.0f, CHK_ALERT);
+        }
+    }
+
+    gfx_fill(c, 0, bar.y, l.w, bar.h, C_PANEL);
+    gfx_fill(c, 0, bar.y, l.w, 1, C_PANEL_EDGE);
+    if (a->touch_xy) {
+        button(c, leads_button(l, 0), "Farben", false, true);
+        button(c, leads_button(l, 1), "Fertig", true, true);
+    } else {
+        text_center(c, &FONT_SMALL, l.w / 2, bar.y + bar.h / 2 + 5, "Tippen: schließen",
+                    C_TEXT_DIM);
+    }
+}
+
+static void open_leads(app_t *a, bool automatic) {
+    a->screen = APP_LEADS;
+    a->leads_auto = automatic;
+    a->lead_active = false;
+    a->lead_ok_active = false;
+    a->leads_shown = a->mon->lead_flags;
+    a->mon->draw = false;
+    redraw(a);
+}
+
+static void leave_leads(app_t *a) {
+    a->lead_dismissed = a->mon->status == MON_LEAD_OFF;  // nicht gleich wieder öffnen
+    a->leads_auto = false;
+    go_live(a);
 }
 
 // ------------------------------------------------------------------ Auswertung läuft
@@ -1208,6 +1335,9 @@ static void redraw(app_t *a) {
         case APP_CHECK_DETAIL:
             draw_check_detail(a);
             break;
+        case APP_LEADS:
+            draw_leads(a);
+            break;
     }
     if (a->toast_shown) {
         draw_toast(a);
@@ -1227,6 +1357,10 @@ void app_init(app_t *a) {
     }
     if (a->ui->person > PERSON_GUEST) {
         a->ui->person = PERSON_GUEST;
+    }
+    a->ui->avatar &= 1u;
+    if (a->ui->cables >= CABLE_PRESETS) {
+        a->ui->cables = 0;
     }
     apply_look(a);
     apply_orientation(a);
@@ -1366,6 +1500,9 @@ static void settings_tap(app_t *a, int row) {
             a->ui->speed = (uint8_t)((a->ui->speed + 1) % MON_SPEED_COUNT);
             monitor_set_scale(a->mon, a->ui->gain, a->ui->speed);
             break;
+        case SET_AVATAR:
+            a->ui->avatar ^= 1u;
+            break;
         case SET_CAL:
             start_cal(a);
             return;
@@ -1430,6 +1567,8 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
             } else if (hit(menu_item(l, 2), ev.x, ev.y)) {
                 a->screen = APP_SETTINGS;
                 redraw(a);
+            } else if (hit(menu_item(l, 4), ev.x, ev.y)) {
+                open_leads(a, false);
             } else if (hit(menu_item(l, 3), ev.x, ev.y)) {
                 a->screen = APP_PROFILES;
                 redraw(a);
@@ -1591,6 +1730,20 @@ void app_event(app_t *a, ui_event_t ev, uint32_t now) {
                 redraw(a);
             }
             break;
+        case APP_LEADS:
+            if (!a->touch_xy) {
+                if (tap || ev.type == EV_LONG) {
+                    leave_leads(a);
+                }
+            } else if (ev.type == EV_LONG ||
+                       (tap && (hit(leads_button(l, 1), ev.x, ev.y) || hit(close_box(l), ev.x, ev.y)))) {
+                leave_leads(a);
+            } else if (tap && hit(leads_button(l, 0), ev.x, ev.y)) {
+                a->ui->cables = (uint8_t)((a->ui->cables + 1) % CABLE_PRESETS);
+                a->req_save = true;
+                redraw(a);
+            }
+            break;
         case APP_CHECK_DETAIL:
             if (ev.type == EV_SWIPE_LEFT) {
                 if (a->detail < a->n_checks - 1) {
@@ -1633,6 +1786,38 @@ int app_frame(app_t *a, uint32_t now, rect_t *dirty, int max_dirty) {
             stop_measure(a, true, now);
             return 0;
         }
+    }
+    if (a->screen == APP_LIVE && !a->measuring && !a->toast_shown) {
+        if (a->mon->status == MON_LEAD_OFF) {
+            if (!a->lead_active) {
+                a->lead_active = true;
+                a->lead_off_since = now;
+            } else if (!a->lead_dismissed && now - a->lead_off_since >= LEADS_AUTO_MS) {
+                open_leads(a, true);
+                return 0;
+            }
+        } else {
+            a->lead_active = false;
+            a->lead_dismissed = false;
+        }
+    }
+    if (a->screen == APP_LEADS) {
+        if (a->mon->lead_flags != a->leads_shown) {  // andere Elektrode ab: Markierung nachführen
+            a->leads_shown = a->mon->lead_flags;
+            redraw(a);
+        } else if (a->leads_auto && a->mon->status != MON_LEAD_OFF) {
+            if (!a->lead_ok_active) {
+                a->lead_ok_active = true;
+                a->lead_ok_since = now;
+            } else if (now - a->lead_ok_since >= LEADS_OK_MS) {
+                a->leads_auto = false;
+                go_live(a);
+                show_toast(a, "Elektroden haben Kontakt.", now);
+            }
+        } else {
+            a->lead_ok_active = false;
+        }
+        return 0;
     }
     if (!a->low_warned && a->ui->vsys == VSYS_OK && a->battery_pct >= 0 && a->battery_pct <= 10) {
         a->low_warned = true;
