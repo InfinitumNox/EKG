@@ -1,6 +1,8 @@
-// Flache Figur mit runden Formen: Jedes Körperteil ist ein Abstandsfeld (Kapsel mit wechselndem
-// Radius, Kreis, Rumpfprofil); „smin“ verschmilzt sie ohne Knick, die Kantenglättung folgt aus
-// dem Abstand zum Rand.
+// Flache Figur mit fließenden Umrissen. Rumpf, Beine und Arme sind Profile: Mittellinie und halbe
+// Breite über der Höhe, zwischen Stützstellen kubisch interpoliert (stetige Steigung, keine
+// Knicke). Kopf, Hals, Schultern und Füße sind Kreise und Kapseln; „smin“ verschmilzt alle Teile
+// mit weichen Kehlen. Gerechnet wird in Körperhöhen (0 = Scheitel, 1 = Sohle), die Kanten-
+// glättung folgt aus dem Abstand zum Rand.
 
 #include "avatar.h"
 
@@ -34,16 +36,17 @@ avatar_t avatar_for(const profile_t *p, int mode) {
     return a;
 }
 
-// Breitenfaktor aus dem BMI: 22 = 1,0; Bauch und Hüfte legen stärker zu als die Schultern
+// Breitenfaktor aus dem BMI: 22 = 1,0
 static float build(const avatar_t *a) {
     return clampf(1.0f + 0.045f * ((float)a->bmi10 / 10.0f - 22.0f), 0.78f, 1.55f);
 }
 
+// wie stark eine Stelle mit dem BMI zulegt (f = 0: gar nicht, 1: voll, Taille 1,5)
 static float part(float k, float f) {
     return 1.0f + (k - 1.0f) * f;
 }
 
-// ------------------------------------------------------------------ Abstandsfelder
+// ------------------------------------------------------------------ Grundformen
 typedef struct {
     float x0, y0, x1, y1, r0, r1;
 } cap_t;
@@ -51,7 +54,7 @@ typedef struct {
 // Abstand zum Rand einer Kapsel, deren Radius von r0 nach r1 wechselt (innen negativ)
 static float sd_cap(const cap_t *c, float px, float py) {
     const float dx = c->x1 - c->x0, dy = c->y1 - c->y0;
-    const float t = clampf(((px - c->x0) * dx + (py - c->y0) * dy) / (dx * dx + dy * dy + 1e-6f),
+    const float t = clampf(((px - c->x0) * dx + (py - c->y0) * dy) / (dx * dx + dy * dy + 1e-9f),
                            0.0f, 1.0f);
     const float qx = c->x0 + t * dx - px, qy = c->y0 + t * dy - py;
     return sqrtf(qx * qx + qy * qy) - (c->r0 + t * (c->r1 - c->r0));
@@ -68,170 +71,247 @@ static float smin(float a, float b, float k) {
     return b + (a - b) * h - k * h * (1.0f - h);
 }
 
-// ------------------------------------------------------------------ Rumpf
+// ------------------------------------------------------------------ Profile
+#define MAX_KEYS 10
+
 typedef struct {
-    float sh, ch, wa, hi;  // halbe Breite an Schulter, Brust, Taille, Hüfte (mal Körperhöhe)
-    float waist_y;
-} torso_t;
+    int n;
+    float y[MAX_KEYS], xc[MAX_KEYS], hw[MAX_KEYS];
+} prof_t;
 
-static torso_t torso_of(const avatar_t *a) {
-    const float k = build(a);
-    torso_t t;
-    switch (a->sex) {
-        case SEX_MALE:
-            t = (torso_t){0.128f, 0.110f, 0.086f, 0.088f, 0.400f};
-            break;
-        case SEX_FEMALE:
-            t = (torso_t){0.102f, 0.088f, 0.066f, 0.100f, 0.385f};
-            break;
-        default:
-            t = (torso_t){0.115f, 0.099f, 0.076f, 0.094f, 0.395f};
-            break;
+// Steigung an Stützstelle i (Mittel der angrenzenden Sekanten)
+static float tangent(const float *ys, const float *vs, int n, int i) {
+    if (i == 0) {
+        return (vs[1] - vs[0]) / (ys[1] - ys[0]);
     }
-    t.sh *= part(k, 0.32f);
-    t.ch *= part(k, 0.85f);
-    t.wa *= part(k, 1.50f);
-    t.hi *= part(k, 1.00f);
-    return t;
-}
-
-static float smooth01(float u) {
-    return u * u * (3.0f - 2.0f * u);
-}
-
-#define TORSO_TOP 0.150f
-#define TORSO_BOTTOM 0.545f
-
-// halbe Rumpfbreite (mal Körperhöhe) in Höhe v: geglättet zwischen den Schlüsselstellen, die
-// alle Hoch- oder Tiefpunkte der Umrisslinie sind
-static float torso_hw(const torso_t *t, float v) {
-    const float ys[6] = {TORSO_TOP, 0.192f, 0.275f, t->waist_y, 0.510f, TORSO_BOTTOM};
-    const float ws[6] = {0.034f, t->sh, t->ch, t->wa, t->hi, t->hi * 0.94f};
-    v = clampf(v, ys[0], ys[5]);
-    for (int i = 1; i < 6; i++) {
-        if (v <= ys[i]) {
-            const float u = (v - ys[i - 1]) / (ys[i] - ys[i - 1]);
-            return clampf(ws[i - 1] + (ws[i] - ws[i - 1]) * smooth01(u), 0.0f, 0.22f);
-        }
+    if (i == n - 1) {
+        return (vs[n - 1] - vs[n - 2]) / (ys[n - 1] - ys[n - 2]);
     }
-    return ws[5];
+    return 0.5f * ((vs[i] - vs[i - 1]) / (ys[i] - ys[i - 1]) +
+                   (vs[i + 1] - vs[i]) / (ys[i + 1] - ys[i]));
 }
 
-// ------------------------------------------------------------------ Figur
+// kubische Hermite-Interpolation; dv bekommt die Ableitung nach y
+static float hermite(const float *ys, const float *vs, int n, float y, float *dv) {
+    if (y <= ys[0]) {
+        *dv = 0.0f;
+        return vs[0];
+    }
+    if (y >= ys[n - 1]) {
+        *dv = 0.0f;
+        return vs[n - 1];
+    }
+    int i = 0;
+    while (y > ys[i + 1]) {
+        i++;
+    }
+    const float h = ys[i + 1] - ys[i], t = (y - ys[i]) / h;
+    const float m0 = tangent(ys, vs, n, i) * h, m1 = tangent(ys, vs, n, i + 1) * h;
+    const float t2 = t * t, t3 = t2 * t;
+    const float v = (2 * t3 - 3 * t2 + 1) * vs[i] + (t3 - 2 * t2 + t) * m0 +
+                    (-2 * t3 + 3 * t2) * vs[i + 1] + (t3 - t2) * m1;
+    *dv = ((6 * t2 - 6 * t) * vs[i] + (3 * t2 - 4 * t + 1) * m0 + (-6 * t2 + 6 * t) * vs[i + 1] +
+           (3 * t2 - 2 * t) * m1) /
+          h;
+    return v;
+}
+
+// Abstand zum Rand eines Profils: waagrechter Abstand, mit der Randsteigung auf den echten
+// Abstand umgerechnet; oben und unten gerade abgeschnitten
+static float sd_prof(const prof_t *p, float px, float py) {
+    float dxc, dhw;
+    const float xc = hermite(p->y, p->xc, p->n, py, &dxc);
+    const float hw = hermite(p->y, p->hw, p->n, py, &dhw);
+    const float slope = dxc + (px >= xc ? dhw : -dhw);
+    const float d = (fabsf(px - xc) - hw) / sqrtf(1.0f + slope * slope);
+    return fmaxf(d, fmaxf(p->y[0] - py, py - p->y[p->n - 1]));
+}
+
+static void prof_add(prof_t *p, float y, float xc, float hw) {
+    if (p->n < MAX_KEYS) {
+        p->y[p->n] = y;
+        p->xc[p->n] = xc;
+        p->hw[p->n] = hw;
+        p->n++;
+    }
+}
+
+// ------------------------------------------------------------------ Körperbau
+// Stützstellen für Frauen und Männer (y, halbe Breite bzw. Mitte, Zunahme mit dem BMI);
+// neutral ist der Mittelwert. Frauen: Sanduhr mit schmaler Taille; Männer: V-Form.
 typedef struct {
-    float fh, cx, top;
-    bool female;
-    torso_t t;
-    cap_t arm[2][4];  // Oberarm, Unterarm, Hand, Daumen
-    cap_t leg[2][4];  // Oberschenkel, Wade oben, Wade unten, Fuß
-    cap_t neck;
-    float hx, hy, hr;  // Schädel
-    float jx, jy, jr;  // Kiefer
-    float bx[2], by, br;  // Brust (nur Frauen)
+    float y, xc, hw, f;
+} key_t2;
+
+#define N_TORSO 10
+static const key_t2 TORSO_F[N_TORSO] = {
+    {0.150f, 0, 0.030f, 0.4f},  // Halsansatz
+    {0.172f, 0, 0.058f, 0.4f},  // Nacken
+    {0.198f, 0, 0.098f, 0.3f},  // Schulter
+    {0.240f, 0, 0.086f, 0.8f},  // Achsel
+    {0.280f, 0, 0.091f, 0.9f},  // Brust
+    {0.314f, 0, 0.075f, 1.1f},  // unter der Brust
+    {0.365f, 0, 0.063f, 1.5f},  // Taille
+    {0.422f, 0, 0.088f, 1.3f},  // obere Hüfte
+    {0.470f, 0, 0.106f, 1.0f},  // Hüfte
+    {0.515f, 0, 0.098f, 1.0f},  // Schritt
+};
+static const key_t2 TORSO_M[N_TORSO] = {
+    {0.150f, 0, 0.036f, 0.4f}, {0.170f, 0, 0.076f, 0.4f}, {0.198f, 0, 0.130f, 0.3f},
+    {0.245f, 0, 0.115f, 0.8f}, {0.285f, 0, 0.108f, 0.9f}, {0.330f, 0, 0.094f, 1.3f},
+    {0.385f, 0, 0.083f, 1.5f}, {0.440f, 0, 0.087f, 1.2f}, {0.482f, 0, 0.092f, 1.0f},
+    {0.522f, 0, 0.089f, 1.0f},
+};
+
+#define N_LEG 10
+static const key_t2 LEG_F[N_LEG] = {
+    {0.440f, 0.050f, 0.052f, 1.1f},  // in der Hüfte
+    {0.515f, 0.052f, 0.056f, 1.1f},  // Schritt
+    {0.585f, 0.047f, 0.051f, 1.1f},  // Oberschenkel
+    {0.665f, 0.040f, 0.041f, 1.0f},
+    {0.735f, 0.034f, 0.029f, 0.7f},  // über dem Knie
+    {0.762f, 0.033f, 0.026f, 0.6f},  // Knie
+    {0.812f, 0.036f, 0.031f, 0.6f},  // Wade
+    {0.880f, 0.034f, 0.022f, 0.5f},
+    {0.942f, 0.031f, 0.014f, 0.4f},  // Knöchel
+    {0.958f, 0.031f, 0.014f, 0.4f},
+};
+static const key_t2 LEG_M[N_LEG] = {
+    {0.440f, 0.050f, 0.050f, 1.1f}, {0.522f, 0.050f, 0.052f, 1.1f},
+    {0.600f, 0.047f, 0.048f, 1.1f}, {0.680f, 0.043f, 0.040f, 1.0f},
+    {0.745f, 0.040f, 0.031f, 0.7f}, {0.772f, 0.040f, 0.029f, 0.6f},
+    {0.822f, 0.043f, 0.035f, 0.6f}, {0.888f, 0.040f, 0.025f, 0.5f},
+    {0.944f, 0.036f, 0.016f, 0.4f}, {0.958f, 0.036f, 0.016f, 0.4f},
+};
+
+static key_t2 blend_key(const key_t2 *f, const key_t2 *m, int sex) {
+    if (sex == SEX_FEMALE) {
+        return *f;
+    }
+    if (sex == SEX_MALE) {
+        return *m;
+    }
+    return (key_t2){0.5f * (f->y + m->y), 0.5f * (f->xc + m->xc), 0.5f * (f->hw + m->hw),
+                    0.5f * (f->f + m->f)};
+}
+
+typedef struct {
+    prof_t torso, leg[2], arm[2], hair;
+    bool long_hair, short_hair;
+    cap_t neck, foot[2];
+    float dx[2], dy, dr;  // Schultern (Deltamuskel)
+    float hx, hy, hr;     // Schädel
+    float jy, jr;         // Kiefer
+    float reach;          // größte halbe Breite (Hände)
 } figure_t;
 
-static float torso_sd(const figure_t *f, float px, float py) {
-    const float v = (py - f->top) / f->fh;
-    const float hw = torso_hw(&f->t, v) * f->fh;
-    const float e = 0.004f;
-    const float slope = (torso_hw(&f->t, v + e) - torso_hw(&f->t, v - e)) / (2.0f * e);
-    const float dx = (fabsf(px - f->cx) - hw) / sqrtf(1.0f + slope * slope);
-    const float dt = f->top + TORSO_TOP * f->fh - py;
-    const float db = py - (f->top + TORSO_BOTTOM * f->fh);
-    return fmaxf(fmaxf(dx, dt), db);
+static float torso_hw_at(const figure_t *f, float v) {
+    float d;
+    return hermite(f->torso.y, f->torso.hw, f->torso.n, v, &d);
 }
 
-// Rumpf mit Brust
-static float chest_sd(const figure_t *f, float px, float py) {
-    float d = torso_sd(f, px, py);
-    if (f->female) {
-        for (int s = 0; s < 2; s++) {
-            d = smin(d, sd_circle(f->bx[s], f->by, f->br, px, py), 0.016f * f->fh);
-        }
+static void build_figure(figure_t *f, const avatar_t *av) {
+    const float k = build(av);
+    const int sex = av->sex;
+    const bool female = sex == SEX_FEMALE, male = sex == SEX_MALE;
+    *f = (figure_t){0};
+
+    for (int i = 0; i < N_TORSO; i++) {
+        const key_t2 t = blend_key(&TORSO_F[i], &TORSO_M[i], sex);
+        prof_add(&f->torso, t.y, 0.0f, t.hw * part(k, t.f));
     }
-    return d;
-}
-
-static float body_sd(const figure_t *f, float px, float py) {
-    const float fh = f->fh;
-    float d = chest_sd(f, px, py);
-    d = smin(d, sd_cap(&f->neck, px, py), 0.024f * fh);
-    const float head = smin(sd_circle(f->hx, f->hy, f->hr, px, py),
-                            sd_circle(f->jx, f->jy, f->jr, px, py), 0.028f * fh);
-    d = smin(d, head, 0.012f * fh);
-    for (int s = 0; s < 2; s++) {
-        float da = smin(sd_cap(&f->arm[s][0], px, py), sd_cap(&f->arm[s][1], px, py), 0.014f * fh);
-        da = smin(da, sd_cap(&f->arm[s][2], px, py), 0.008f * fh);
-        da = smin(da, sd_cap(&f->arm[s][3], px, py), 0.004f * fh);
-        d = smin(d, da, 0.014f * fh);
-        float dl = smin(sd_cap(&f->leg[s][0], px, py), sd_cap(&f->leg[s][1], px, py), 0.022f * fh);
-        dl = smin(dl, sd_cap(&f->leg[s][2], px, py), 0.016f * fh);
-        dl = smin(dl, sd_cap(&f->leg[s][3], px, py), 0.008f * fh);
-        d = smin(d, dl, 0.022f * fh);
-    }
-    return d;
-}
-
-static void build_figure(figure_t *f, const avatar_t *av, float k, float fh, float cx,
-                         float top) {
-    f->fh = fh;
-    f->cx = cx;
-    f->top = top;
-    f->female = av->sex == SEX_FEMALE;
-    f->t = torso_of(av);
-    const torso_t *t = &f->t;
-    const float headk = av->height_cm < 150 ? 1.0f + (150.0f - (float)av->height_cm) / 150.0f
-                                            : 1.0f;
-    const float rh = 0.056f * headk;  // Schädelradius (mal Körperhöhe)
-#define PX(u) (cx + (u) * fh)
-#define PY(v) (top + (v) * fh)
-    f->hx = cx;
-    f->hy = PY(rh * 1.05f);
-    f->hr = rh * 0.92f * fh;
-    f->jx = cx;
-    f->jy = PY(rh * 1.55f);
-    f->jr = rh * 0.70f * fh;
-    f->neck = (cap_t){cx, PY(rh * 1.75f), cx, PY(0.176f), 0.026f * part(k, 0.5f) * fh,
-                      0.033f * part(k, 0.5f) * fh};
-    f->by = PY(0.292f);
-    f->br = 0.034f * part(k, 0.9f) * fh;
-    f->bx[0] = PX(-0.040f * part(k, 0.6f));
-    f->bx[1] = PX(0.040f * part(k, 0.6f));
-
-    const float body_hw = fmaxf(t->ch, t->wa), hand_hw = fmaxf(body_hw, t->hi);
     for (int s = 0; s < 2; s++) {
         const float sg = s == 0 ? -1.0f : 1.0f;  // −: rechte Körperseite (links im Bild)
-        const float ua = 0.028f * part(k, 0.95f), fa = 0.021f * part(k, 0.90f);
-        const float sx = sg * (t->sh - 0.022f), ex = sg * (body_hw + 0.056f);
-        const float wx = sg * (hand_hw + 0.074f);
-        f->arm[s][0] = (cap_t){PX(sx), PY(0.208f), PX(ex), PY(0.375f), ua * fh, fa * 1.08f * fh};
-        f->arm[s][1] = (cap_t){PX(ex), PY(0.375f), PX(wx), PY(0.512f), fa * 1.08f * fh,
-                               0.0135f * part(k, 0.6f) * fh};
-        f->arm[s][2] = (cap_t){PX(wx), PY(0.520f), PX(wx + sg * 0.009f), PY(0.568f),
-                               0.0165f * fh, 0.0125f * fh};
-        f->arm[s][3] = (cap_t){PX(wx - sg * 0.012f), PY(0.530f), PX(wx - sg * 0.014f),
-                               PY(0.552f), 0.0085f * fh, 0.0065f * fh};
-        // Beine: Hüftgelenk, Knie, Wadenbauch, Knöchel (leicht nach innen); Fuß nach außen
-        const float hxp = sg * t->hi * 0.50f, kxp = sg * t->hi * 0.46f, mxp = sg * t->hi * 0.44f,
-                    axp = sg * t->hi * 0.42f;
-        const float thigh = fmaxf(t->hi * 0.52f, 0.04f), knee = 0.033f * part(k, 0.7f);
-        f->leg[s][0] = (cap_t){PX(hxp), PY(0.540f), PX(kxp), PY(0.742f), thigh * fh,
-                               knee * 1.05f * fh};
-        f->leg[s][1] = (cap_t){PX(kxp), PY(0.742f), PX(mxp), PY(0.800f), knee * 1.05f * fh,
-                               knee * 1.12f * fh};
-        f->leg[s][2] = (cap_t){PX(mxp), PY(0.800f), PX(axp), PY(0.942f), knee * 1.12f * fh,
-                               0.0185f * part(k, 0.5f) * fh};
-        f->leg[s][3] = (cap_t){PX(axp), PY(0.966f), PX(axp + sg * 0.040f), PY(0.980f),
-                               0.0195f * fh, 0.0145f * fh};
+        for (int i = 0; i < N_LEG; i++) {
+            const key_t2 l = blend_key(&LEG_F[i], &LEG_M[i], sex);
+            const float spread = part(k, l.f >= 1.0f ? 0.75f : 0.40f);
+            prof_add(&f->leg[s], l.y, sg * l.xc * spread, l.hw * part(k, l.f));
+        }
+        const float ay = f->leg[s].y[N_LEG - 1], ax = f->leg[s].xc[N_LEG - 1];
+        f->foot[s] = (cap_t){ax, ay + 0.006f, ax + sg * 0.036f, 0.982f, 0.017f, 0.012f};
     }
-#undef PX
-#undef PY
+
+    // Arme hängen locker neben dem Körper: Ellbogen auf Taillenhöhe, Hände neben der Hüfte
+    const float sh = torso_hw_at(f, 0.198f), waist = torso_hw_at(f, female ? 0.365f : 0.385f);
+    const float hip = torso_hw_at(f, female ? 0.470f : 0.482f);
+    const float w_up = (male ? 0.031f : 0.027f) * part(k, 0.9f);
+    const float w_el = (male ? 0.021f : 0.017f) * part(k, 0.7f);
+    const float w_fa = (male ? 0.024f : 0.020f) * part(k, 0.7f);
+    const float w_wr = (male ? 0.015f : 0.012f) * part(k, 0.5f);
+    const float w_pa = (male ? 0.019f : 0.016f) * part(k, 0.4f);
+    const float el = fmaxf(sh + 0.006f, waist + w_el + 0.020f);
+    const float wr = fmaxf(el + 0.016f, hip + w_wr + 0.022f);
+    for (int s = 0; s < 2; s++) {
+        const float sg = s == 0 ? -1.0f : 1.0f;
+        prof_t *a = &f->arm[s];
+        prof_add(a, 0.215f, sg * (sh - 0.020f), w_up);
+        prof_add(a, 0.262f, sg * (sh - 0.010f), w_up * 0.93f);
+        prof_add(a, 0.305f, sg * (sh - 0.002f + 0.3f * (el - sh)), w_up * 0.84f);
+        prof_add(a, 0.362f, sg * el, w_el);
+        prof_add(a, 0.402f, sg * (el + 0.35f * (wr - el)), w_fa);
+        prof_add(a, 0.468f, sg * wr, w_wr);
+        prof_add(a, 0.500f, sg * (wr + 0.003f), w_pa);
+        prof_add(a, 0.540f, sg * (wr + 0.004f), w_pa * 0.70f);
+        prof_add(a, 0.562f, sg * (wr + 0.004f), w_pa * 0.35f);
+        f->dx[s] = sg * (sh - 0.024f);
+    }
+    f->dy = 0.214f;
+    f->dr = (male ? 0.033f : 0.027f) * part(k, 0.6f);
+    f->reach = wr + w_pa + 0.012f;
+
+    // Kopf: Schädel und Kiefer zu einem Oval verschmolzen; Kinder mit größerem Kopf
+    const float headk = av->height_cm < 150 ? 1.0f + (150.0f - (float)av->height_cm) / 150.0f
+                                            : 1.0f;
+    const float rh = (female ? 0.053f : 0.056f) * headk;
+    f->hx = 0.0f;
+    f->hy = rh * 1.05f;
+    f->hr = rh * 0.92f;
+    f->jy = rh * 1.55f;
+    f->jr = rh * (male ? 0.74f : 0.66f);
+    f->neck = (cap_t){0.0f, rh * 1.75f, 0.0f, 0.176f, (male ? 0.027f : 0.021f) * part(k, 0.5f),
+                      (male ? 0.036f : 0.028f) * part(k, 0.5f)};
+
+    // Haare: Frauen lang über die Schultern, Männer kurz
+    f->long_hair = female;
+    f->short_hair = male;
+    if (female) {
+        prof_t *h = &f->hair;
+        prof_add(h, f->hy, 0.0f, rh * 1.04f);
+        prof_add(h, 0.120f, 0.0f, rh * 1.12f);
+        prof_add(h, 0.170f, 0.0f, rh * 1.16f);
+        prof_add(h, 0.215f, 0.0f, rh * 1.10f);
+        prof_add(h, 0.245f, 0.0f, rh * 0.85f);
+    }
+}
+
+static float body_sd(const figure_t *f, float u, float v) {
+    float d = sd_prof(&f->torso, u, v);
+    d = smin(d, sd_cap(&f->neck, u, v), 0.020f);
+    const float head =
+        smin(sd_circle(f->hx, f->hy, f->hr, u, v), sd_circle(f->hx, f->jy, f->jr, u, v), 0.028f);
+    d = smin(d, head, 0.010f);
+    for (int s = 0; s < 2; s++) {
+        const float dl = smin(sd_prof(&f->leg[s], u, v), sd_cap(&f->foot[s], u, v), 0.010f);
+        d = smin(d, dl, 0.016f);
+        const float da = smin(sd_circle(f->dx[s], f->dy, f->dr, u, v), sd_prof(&f->arm[s], u, v),
+                              0.014f);
+        d = smin(d, da, 0.005f);
+    }
+    return d;
+}
+
+static float hair_sd(const figure_t *f, float u, float v) {
+    if (f->long_hair) {
+        return smin(sd_circle(f->hx, f->hy - 0.06f * f->hr, f->hr * 1.10f, u, v),
+                    sd_prof(&f->hair, u, v), 0.012f);
+    }
+    return sd_circle(f->hx, f->hy - 0.22f * f->hr, f->hr * 1.06f, u, v);
 }
 
 // ------------------------------------------------------------------ Zeichnen
 // Flache 2D-Figur: eine Farbe im Ton der Anzeige, Haare etwas dunkler, geglättete Ränder
-static void cover(canvas_t *c, int x, int y, float d, uint32_t rgb) {
-    const float cov = clampf(0.5f - d, 0.0f, 1.0f);
+static void cover(canvas_t *c, int x, int y, float d_px, uint32_t rgb) {
+    const float cov = clampf(0.5f - d_px, 0.0f, 1.0f);
     if (cov > 0.0f) {
         gfx_blend(c, x, y, rgb, (int)(cov * 256.0f));
     }
@@ -239,53 +319,46 @@ static void cover(canvas_t *c, int x, int y, float d, uint32_t rgb) {
 
 void avatar_draw(canvas_t *c, int bx, int by, int bw, int bh, const avatar_t *av,
                  avatar_sites_t *sites) {
-    const float k = build(av);
-    const torso_t t = torso_of(av);
+    figure_t f;
+    build_figure(&f, av);
     float fh = (float)bh * clampf((float)av->height_cm / 190.0f, 0.50f, 1.0f);
-    // Arme und Hände dürfen die Box nicht verlassen: breite Figuren werden etwas kleiner
-    const float reach = fmaxf(fmaxf(t.ch, t.wa), t.hi) + 0.110f;
-    if (reach * fh > (float)bw / 2.0f - 2.0f) {
-        fh = ((float)bw / 2.0f - 2.0f) / reach;
+    // Hände dürfen die Box nicht verlassen: breite Figuren werden etwas kleiner
+    if (f.reach * fh > (float)bw / 2.0f - 2.0f) {
+        fh = ((float)bw / 2.0f - 2.0f) / f.reach;
     }
     const float cx = (float)bx + (float)bw / 2.0f;
     const float top = (float)(by + bh) - fh;
-    figure_t f;
-    build_figure(&f, av, k, fh, cx, top);
     const uint32_t fill = gfx_mix(C_PANEL_EDGE, C_TEXT_FAINT, 128);
     const uint32_t hair = gfx_mix(fill, 0x000000u, 100);
+    const float inv = 1.0f / fh;
 
-    // Haare hinter dem Kopf: Frauen lang, Männer kurz, neutral ohne
-    if (av->sex != SEX_UNKNOWN) {
-        const cap_t mane = {cx, f.hy, cx, top + 0.205f * fh, f.hr * 1.16f, f.hr * 0.98f};
-        const int y1 = (int)ceilf(top + 0.235f * fh);
-        const int x0 = (int)floorf(cx - 0.12f * fh), x1 = (int)ceilf(cx + 0.12f * fh);
+    if (f.long_hair || f.short_hair) {
+        const int x0 = (int)floorf(cx - 0.10f * fh), x1 = (int)ceilf(cx + 0.10f * fh);
+        const int y1 = (int)ceilf(top + 0.25f * fh);
         for (int y = (int)floorf(top) - 2; y <= y1; y++) {
             for (int x = x0; x <= x1; x++) {
-                const float px = (float)x + 0.5f, py = (float)y + 0.5f;
-                const float d = av->sex == SEX_FEMALE
-                                    ? sd_cap(&mane, px, py)
-                                    : sd_circle(cx, f.hy - 0.22f * f.hr, f.hr * 1.06f, px, py);
-                cover(c, x, y, d, hair);
+                const float u = ((float)x + 0.5f - cx) * inv, v = ((float)y + 0.5f - top) * inv;
+                cover(c, x, y, hair_sd(&f, u, v) * fh, hair);
             }
         }
     }
 
-    // Körper
-    const float half = reach * fh + 3.0f;
+    const float half = f.reach * fh + 3.0f;
     const int x0 = (int)floorf(cx - half), x1 = (int)ceilf(cx + half);
-    const int y0 = (int)floorf(top) - 1, y1 = by + bh;
-    for (int y = y0; y <= y1; y++) {
+    for (int y = (int)floorf(top) - 1; y <= by + bh; y++) {
+        const float v = ((float)y + 0.5f - top) * inv;
         for (int x = x0; x <= x1; x++) {
-            cover(c, x, y, body_sd(&f, (float)x + 0.5f, (float)y + 0.5f), fill);
+            const float u = ((float)x + 0.5f - cx) * inv;
+            cover(c, x, y, body_sd(&f, u, v) * fh, fill);
         }
     }
 
     if (sites) {
         // Anker: RA rechts unter dem Schlüsselbein, LA links und RL rechts am unteren Rippenbogen
         // (Ableitung II). „Rechts“ der Person liegt im Bild links.
-        const float ya = 0.232f, yr = 0.360f;
-        const float xa = fminf(0.062f, 0.70f * torso_hw(&t, ya));
-        const float xr = fminf(0.056f, 0.70f * torso_hw(&t, yr));
+        const float ya = 0.232f, yr = av->sex == SEX_FEMALE ? 0.330f : 0.345f;
+        const float xa = fminf(0.060f, 0.65f * torso_hw_at(&f, ya));
+        const float xr = fminf(0.050f, 0.68f * torso_hw_at(&f, yr));
         sites->ra = (avatar_pt_t){cx - xa * fh, top + ya * fh};
         sites->la = (avatar_pt_t){cx + xr * fh, top + yr * fh};
         sites->rl = (avatar_pt_t){cx - xr * fh, top + yr * fh};
